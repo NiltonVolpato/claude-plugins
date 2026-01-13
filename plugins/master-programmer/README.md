@@ -6,22 +6,6 @@ A Claude Code plugin that channels ancient wisdom for modern programming dilemma
 
 When faced with eternal questions like "tabs or spaces?", "why does my code only break in production?", or "how to debug a memory leak?" the Master Programmer responds with parables, koans, and teachings in the style of classical Taoist and Zen texts.
 
-## Installation
-
-First, add this repository as a marketplace:
-
-```bash
-/plugin marketplace add NiltonVolpato/claude-plugins
-```
-
-Then install the plugin:
-
-```bash
-/plugin install master-programmer@nv-claude-plugins
-```
-
-Or use the interactive UI with `/plugin` and navigate to the **Marketplaces** tab.
-
 ## Usage
 
 The Master Programmer agent activates automatically when you ask philosophical programming questions or explicitly request wisdom:
