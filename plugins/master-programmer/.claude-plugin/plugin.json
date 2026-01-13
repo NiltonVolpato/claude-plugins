@@ -1,0 +1,10 @@
+{
+    "name": "master-programmer",
+    "description": "Seek advice from the Master Programmer when faced with a dilemma and be enlightened!",
+    "version": "1.0.1",
+    "author": {
+        "name": "Nilton Volpato",
+        "email": "nilton@volpa.to"
+    },
+    "repository": "https://github.com/NiltonVolpato/claude-master-programmer"
+}

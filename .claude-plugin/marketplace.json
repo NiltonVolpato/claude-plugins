@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "nv-claude-plugins",
+  "description": "Directory of Claude Code plugins I created that I thought would be useful to others",
+  "owner": {
+    "name": "Nilton Volpato",
+    "email": "nilton@volpa.to"
+  },
+  "plugins": [
+    {
+      "name": "master-programmer",
+      "description": "Seek advice from the Master Programmer when faced with a dilemma and be enlightened!",
+      "version": "1.0.1",
+      "author": {
+        "name": "Nilton Volpato",
+        "email": "nilton@volpa.to"
+      },
+      "source": "./plugins/master-programmer",
+      "homepage": "https://github.com/NiltonVolpato/claude-code-plugins/tree/main/plugins/master-programmer"
+    }
+  ]
+}
