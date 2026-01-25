@@ -1,0 +1,25 @@
+[project]
+name = "claude-plugins"
+version = "0.1.0"
+description = "Python package for NiltonVolpato/claude-plugins"
+readme = "README.md"
+authors = [
+    { name = "Nilton Volpato", email = "nilton@volpa.to" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/NiltonVolpato/claude-plugins/"
+Repository = "https://github.com/NiltonVolpato/claude-plugins.git"
+
+[project.scripts]
+claude-plugins = "statusline:main"
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# module-name = "statusline"
+module-root = "python"
