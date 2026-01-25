@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from statusline.modules import Module, register
@@ -26,5 +25,5 @@ class WorkspaceModule(Module):
             basename = "~"
         else:
             basename = os.path.basename(current_dir) or current_dir
-        values = {**asdict(input.workspace), "cwd": input.cwd, "basename": basename, **theme_vars}
+        values = {**input.workspace.model_dump(), "cwd": input.cwd, "basename": basename, **theme_vars}
         return fmt.format(**values)

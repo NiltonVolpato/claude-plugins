@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from statusline.modules import Module, register
@@ -25,5 +24,5 @@ class CostModule(Module):
             cost = f"${usd:.4f}"
         else:
             cost = f"${usd:.2f}"
-        values = {**asdict(input.cost), "cost": cost, **theme_vars}
+        values = {**input.cost.model_dump(), "cost": cost, **theme_vars}
         return fmt.format(**values)

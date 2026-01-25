@@ -2,29 +2,26 @@
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field
 from typing import TextIO
 
+from pydantic import BaseModel, ValidationError
 
-@dataclass
-class ModelInfo:
+
+class ModelInfo(BaseModel):
     """Model information from Claude Code."""
 
     id: str = ""
     display_name: str = ""
 
 
-@dataclass
-class WorkspaceInfo:
+class WorkspaceInfo(BaseModel):
     """Workspace information from Claude Code."""
 
     current_dir: str = ""
     project_dir: str = ""
 
 
-@dataclass
-class CostInfo:
+class CostInfo(BaseModel):
     """Cost information from Claude Code."""
 
     total_cost_usd: float = 0.0
@@ -34,8 +31,7 @@ class CostInfo:
     total_lines_removed: int = 0
 
 
-@dataclass
-class ContextWindowInfo:
+class ContextWindowInfo(BaseModel):
     """Context window information from Claude Code."""
 
     total_input_tokens: int = 0
@@ -45,8 +41,7 @@ class ContextWindowInfo:
     remaining_percentage: float = 100.0
 
 
-@dataclass
-class StatuslineInput:
+class StatuslineInput(BaseModel):
     """Parsed input from Claude Code stdin."""
 
     hook_event_name: str = ""
@@ -54,60 +49,18 @@ class StatuslineInput:
     transcript_path: str = ""
     cwd: str = ""
     version: str = ""
-    model: ModelInfo = field(default_factory=ModelInfo)
-    workspace: WorkspaceInfo = field(default_factory=WorkspaceInfo)
-    cost: CostInfo = field(default_factory=CostInfo)
-    context_window: ContextWindowInfo = field(default_factory=ContextWindowInfo)
+    model: ModelInfo = ModelInfo()
+    workspace: WorkspaceInfo = WorkspaceInfo()
+    cost: CostInfo = CostInfo()
+    context_window: ContextWindowInfo = ContextWindowInfo()
 
 
 def parse_input(stdin: TextIO) -> StatuslineInput:
     """Parse JSON input from stdin into StatuslineInput."""
     try:
-        data = json.load(stdin)
-    except json.JSONDecodeError:
+        return StatuslineInput.model_validate_json(stdin.read())
+    except ValidationError:
         return StatuslineInput()
-
-    model_data = data.get("model", {})
-    model = ModelInfo(
-        id=model_data.get("id", ""),
-        display_name=model_data.get("display_name", ""),
-    )
-
-    workspace_data = data.get("workspace", {})
-    workspace = WorkspaceInfo(
-        current_dir=workspace_data.get("current_dir", ""),
-        project_dir=workspace_data.get("project_dir", ""),
-    )
-
-    cost_data = data.get("cost", {})
-    cost = CostInfo(
-        total_cost_usd=cost_data.get("total_cost_usd", 0.0),
-        total_duration_ms=cost_data.get("total_duration_ms", 0),
-        total_api_duration_ms=cost_data.get("total_api_duration_ms", 0),
-        total_lines_added=cost_data.get("total_lines_added", 0),
-        total_lines_removed=cost_data.get("total_lines_removed", 0),
-    )
-
-    context_data = data.get("context_window", {})
-    context_window = ContextWindowInfo(
-        total_input_tokens=context_data.get("total_input_tokens", 0),
-        total_output_tokens=context_data.get("total_output_tokens", 0),
-        context_window_size=context_data.get("context_window_size", 200000),
-        used_percentage=context_data.get("used_percentage", 0.0),
-        remaining_percentage=context_data.get("remaining_percentage", 100.0),
-    )
-
-    return StatuslineInput(
-        hook_event_name=data.get("hook_event_name", ""),
-        session_id=data.get("session_id", ""),
-        transcript_path=data.get("transcript_path", ""),
-        cwd=data.get("cwd", ""),
-        version=data.get("version", ""),
-        model=model,
-        workspace=workspace,
-        cost=cost,
-        context_window=context_window,
-    )
 
 
 def get_sample_input() -> StatuslineInput:

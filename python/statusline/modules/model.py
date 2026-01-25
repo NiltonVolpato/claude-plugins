@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from statusline.modules import Module, register
@@ -20,5 +19,5 @@ class ModelModule(Module):
     def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the model display name."""
         fmt = theme_vars.get("format", "{display_name}")
-        values = {**asdict(input.model), **theme_vars}
+        values = {**input.model.model_dump(), **theme_vars}
         return fmt.format(**values)
