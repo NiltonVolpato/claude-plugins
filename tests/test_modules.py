@@ -33,19 +33,19 @@ class TestModelModule:
     def test_render_display_name(self):
         module = get_module("model")
         input_data = make_input()
-        result = module.render(input_data, {"format": "{display_name}"})
+        result = module.render(input_data, {"format": "{{ display_name }}"})
         assert result == "Test Model"
 
     def test_render_empty_display_name(self):
         module = get_module("model")
         input_data = make_input(model=ModelInfo(id="x", display_name=""))
-        result = module.render(input_data, {"format": "{display_name}"})
+        result = module.render(input_data, {"format": "{{ display_name }}"})
         assert result == ""
 
     def test_render_with_label(self):
         module = get_module("model")
         input_data = make_input()
-        result = module.render(input_data, {"format": "[cyan]{label}{display_name}[/cyan]", "label": " "})
+        result = module.render(input_data, {"format": "[cyan]{{ label }}{{ display_name }}[/cyan]", "label": " "})
         assert "" in result
         assert "Test Model" in result
 
@@ -54,7 +54,7 @@ class TestWorkspaceModule:
     def test_render_current_dir(self):
         module = get_module("workspace")
         input_data = make_input()
-        result = module.render(input_data, {"format": "{basename}"})
+        result = module.render(input_data, {"format": "{{ current_dir | basename }}"})
         assert result == "my-project"
 
     def test_render_empty_workspace_falls_back_to_cwd(self):
@@ -63,7 +63,7 @@ class TestWorkspaceModule:
             workspace=WorkspaceInfo(current_dir="", project_dir=""),
             cwd="/fallback/path",
         )
-        result = module.render(input_data, {"format": "{basename}"})
+        result = module.render(input_data, {"format": "{{ current_dir | basename }}"})
         assert result == "path"
 
     def test_render_empty_both_returns_tilde(self):
@@ -72,7 +72,7 @@ class TestWorkspaceModule:
             workspace=WorkspaceInfo(current_dir="", project_dir=""),
             cwd="",
         )
-        result = module.render(input_data, {"format": "{basename}"})
+        result = module.render(input_data, {"format": "{{ current_dir | basename }}"})
         assert result == "~"
 
 
@@ -80,19 +80,19 @@ class TestCostModule:
     def test_render_cost_cents(self):
         module = get_module("cost")
         input_data = make_input(cost=CostInfo(total_cost_usd=0.05))
-        result = module.render(input_data, {"format": "{cost}"})
+        result = module.render(input_data, {"format": "{{ total_cost_usd | format_cost }}"})
         assert result == "$0.05"
 
     def test_render_cost_dollars(self):
         module = get_module("cost")
         input_data = make_input(cost=CostInfo(total_cost_usd=1.23))
-        result = module.render(input_data, {"format": "{cost}"})
+        result = module.render(input_data, {"format": "{{ total_cost_usd | format_cost }}"})
         assert result == "$1.23"
 
     def test_render_cost_small(self):
         module = get_module("cost")
         input_data = make_input(cost=CostInfo(total_cost_usd=0.0012))
-        result = module.render(input_data, {"format": "{cost}"})
+        result = module.render(input_data, {"format": "{{ total_cost_usd | format_cost }}"})
         assert result == "$0.0012"
 
 
@@ -102,7 +102,7 @@ class TestContextModule:
         input_data = make_input(
             context_window=ContextWindowInfo(used_percentage=42.5)
         )
-        result = module.render(input_data, {"format": "{percent}"})
+        result = module.render(input_data, {"format": "{{ used_percentage | format_percent }}"})
         assert result == "42%"
 
     def test_render_zero_percentage(self):
@@ -110,7 +110,7 @@ class TestContextModule:
         input_data = make_input(
             context_window=ContextWindowInfo(used_percentage=0.0)
         )
-        result = module.render(input_data, {"format": "{percent}"})
+        result = module.render(input_data, {"format": "{{ used_percentage | format_percent }}"})
         assert result == "0%"
 
 
@@ -118,13 +118,13 @@ class TestVersionModule:
     def test_render_version(self):
         module = get_module("version")
         input_data = make_input(version="2.0.76")
-        result = module.render(input_data, {"format": "v{version}"})
+        result = module.render(input_data, {"format": "v{{ version }}"})
         assert result == "v2.0.76"
 
     def test_render_empty_version(self):
         module = get_module("version")
         input_data = make_input(version="")
-        result = module.render(input_data, {"format": "v{version}"})
+        result = module.render(input_data, {"format": "v{{ version }}"})
         assert result == "v?"
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from statusline.modules import Module, register
+from statusline.templates import render_template
 
 if TYPE_CHECKING:
     from statusline.input import StatuslineInput
@@ -18,11 +19,6 @@ class CostModule(Module):
 
     def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the session cost in USD."""
-        fmt = theme_vars.get("format", "{cost}")
-        usd = input.cost.total_cost_usd
-        if usd < 0.01:
-            cost = f"${usd:.4f}"
-        else:
-            cost = f"${usd:.2f}"
-        values = {**input.cost.model_dump(), "cost": cost, **theme_vars}
-        return fmt.format(**values)
+        fmt = theme_vars.get("format", "{{ total_cost_usd | format_cost }}")
+        context = {**input.cost.model_dump(), **theme_vars}
+        return render_template(fmt, context)

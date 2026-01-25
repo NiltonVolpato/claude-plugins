@@ -8,15 +8,15 @@ separator = " | "
 
 [modules.model]
 color = "cyan"
-format = "[cyan]{label}{display_name}[/cyan]"
+format = "[cyan]{{ label }}{{ display_name }}[/cyan]"
 themes.nerd.label = "\uee0d  "
 themes.ascii.label = "Model: "
 themes.emoji.label = "🤖 "
-themes.minimal.format = "[cyan]{display_name}[/cyan]"
+themes.minimal.format = "[cyan]{{ display_name }}[/cyan]"
 
 [modules.workspace]
 color = "blue"
-format = "[blue]{label}{basename}[/blue]"
+format = "[blue]{{ label }}{{ current_dir | basename }}[/blue]"
 themes.nerd.label = "\uf07c  "
 themes.ascii.label = "Directory: "
 themes.emoji.label = "📁 "
@@ -24,7 +24,7 @@ themes.minimal.label = ""
 
 [modules.cost]
 color = "green"
-format = "[green]{label}{cost}[/green]"
+format = "[green]{{ label }}{{ total_cost_usd | format_cost }}[/green]"
 themes.nerd.label = "\uef8d  "
 themes.ascii.label = "Cost: "
 themes.emoji.label = "💰 "
@@ -32,7 +32,7 @@ themes.minimal.label = ""
 
 [modules.context]
 color = "yellow"
-format = "[yellow]{label}{percent}[/yellow]"
+format = "[yellow]{{ label }}{{ used_percentage | format_percent }}[/yellow]"
 themes.nerd.label = "\uede8  "
 themes.ascii.label = "Context: "
 themes.emoji.label = "📊 "
@@ -40,7 +40,7 @@ themes.minimal.label = ""
 
 [modules.version]
 color = "dim"
-format = "[dim]{label}v{version}[/dim]"
+format = "[dim]{{ label }}v{{ version }}[/dim]"
 themes.nerd.label = "\uf487  "
 themes.ascii.label = "Version: "
 themes.emoji.label = "📦 "

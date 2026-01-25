@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from statusline.modules import Module, register
+from statusline.templates import render_template
 
 if TYPE_CHECKING:
     from statusline.input import StatuslineInput
@@ -18,7 +19,6 @@ class ContextModule(Module):
 
     def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the context window usage percentage."""
-        fmt = theme_vars.get("format", "{percent}")
-        percent = f"{input.context_window.used_percentage:.0f}%"
-        values = {**input.context_window.model_dump(), "percent": percent, **theme_vars}
-        return fmt.format(**values)
+        fmt = theme_vars.get("format", "{{ used_percentage | format_percent }}")
+        context = {**input.context_window.model_dump(), **theme_vars}
+        return render_template(fmt, context)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from statusline.modules import Module, register
+from statusline.templates import render_template
 
 if TYPE_CHECKING:
     from statusline.input import StatuslineInput
@@ -18,6 +19,6 @@ class VersionModule(Module):
 
     def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the Claude Code version."""
-        fmt = theme_vars.get("format", "v{version}")
-        values = {"version": input.version or "?", **theme_vars}
-        return fmt.format(**values)
+        fmt = theme_vars.get("format", "v{{ version }}")
+        context = {"version": input.version or "?", **theme_vars}
+        return render_template(fmt, context)

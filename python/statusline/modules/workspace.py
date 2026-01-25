@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 from statusline.modules import Module, register
+from statusline.templates import render_template
 
 if TYPE_CHECKING:
     from statusline.input import StatuslineInput
@@ -19,11 +19,7 @@ class WorkspaceModule(Module):
 
     def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the workspace directory basename."""
-        fmt = theme_vars.get("format", "{basename}")
+        fmt = theme_vars.get("format", "{{ current_dir | basename }}")
         current_dir = input.workspace.current_dir or input.cwd
-        if not current_dir:
-            basename = "~"
-        else:
-            basename = os.path.basename(current_dir) or current_dir
-        values = {**input.workspace.model_dump(), "cwd": input.cwd, "basename": basename, **theme_vars}
-        return fmt.format(**values)
+        context = {**input.workspace.model_dump(), "cwd": input.cwd, "current_dir": current_dir, **theme_vars}
+        return render_template(fmt, context)
