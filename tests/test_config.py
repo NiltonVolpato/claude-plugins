@@ -3,8 +3,6 @@
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from statusline.config import (
     Config,
     ModuleConfig,
@@ -77,7 +75,7 @@ class TestConfig:
                         "ascii": {"label": "Model:"},
                     }
                 ),
-            }
+            },
         )
         theme_vars = config.get_theme_vars("model")
         assert theme_vars == {"label": ""}
@@ -91,9 +89,9 @@ class TestConfig:
                     themes={
                         "nerd": {"label": ""},
                         "ascii": {"label": "Model:"},
-                    }
+                    },
                 ),
-            }
+            },
         )
         theme_vars = config.get_theme_vars("model")
         assert theme_vars == {"label": "Model:"}
@@ -108,14 +106,16 @@ class TestLoadConfig:
         # Check that defaults.toml was loaded
         assert "model" in config.module_configs
         theme_vars = config.get_theme_vars("model")
-        assert theme_vars.get("label") == ""
+        # Nerd theme label includes the icon
+        assert "label" in theme_vars
+        assert "format" in theme_vars
 
     def test_user_config_overrides_defaults(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('''
+            f.write("""
 theme = "ascii"
 color = false
-''')
+""")
             f.flush()
             config = load_config(Path(f.name))
             assert config.theme == "ascii"

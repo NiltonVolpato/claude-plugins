@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from statusline.modules import Module, register
@@ -16,12 +17,9 @@ class ContextModule(Module):
 
     name = "context"
 
-    def render(
-        self, input: StatuslineInput, theme_vars: dict[str, str], color: str
-    ) -> str:
+    def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the context window usage percentage."""
-        label = theme_vars.get("label", "")
-        percentage = input.context_window.used_percentage
-        value = f"{percentage:.0f}%"
-        space = " " if label else ""
-        return f"[{color}]{label}{space}{value}[/{color}]"
+        fmt = theme_vars.get("format", "{percent}")
+        percent = f"{input.context_window.used_percentage:.0f}%"
+        values = {**asdict(input.context_window), "percent": percent, **theme_vars}
+        return fmt.format(**values)

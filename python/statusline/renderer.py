@@ -25,12 +25,11 @@ def render_statusline(input: StatuslineInput, config: Config) -> str:
         if module is None:
             continue
 
-        # Get theme variables and color for this module
+        # Get theme variables (includes format string)
         theme_vars = config.get_theme_vars(module_name)
-        color = config.get_module_color(module_name)
 
         # Module renders with Rich markup
-        rendered = module.render(input, theme_vars, color)
+        rendered = module.render(input, theme_vars)
         if rendered:
             parts.append(rendered)
 

@@ -15,15 +15,12 @@ class Module(ABC):
     name: str = ""
 
     @abstractmethod
-    def render(
-        self, input: StatuslineInput, theme_vars: dict[str, str], color: str
-    ) -> str:
+    def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the module output with Rich markup.
 
         Args:
             input: The parsed input from Claude Code.
-            theme_vars: Theme variables for this module (e.g., {"label": ""}).
-            color: The Rich color name to use (e.g., "cyan").
+            theme_vars: Theme variables including 'format' and 'label'.
 
         Returns:
             Rich-formatted string (e.g., "[cyan] Opus 4.5[/cyan]").

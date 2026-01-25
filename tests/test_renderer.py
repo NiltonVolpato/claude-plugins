@@ -98,7 +98,7 @@ class TestRendererWithThemes:
         )
         result = render_statusline(input_data, config)
         assert "Model:" in result
-        assert "Dir:" in result
+        assert "Directory:" in result
         assert "Test Model" in result
         assert "my-project" in result
 

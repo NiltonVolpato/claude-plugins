@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from statusline.modules import Module, register
@@ -16,15 +17,13 @@ class CostModule(Module):
 
     name = "cost"
 
-    def render(
-        self, input: StatuslineInput, theme_vars: dict[str, str], color: str
-    ) -> str:
+    def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the session cost in USD."""
-        label = theme_vars.get("label", "")
-        cost = input.cost.total_cost_usd
-        if cost < 0.01:
-            value = f"${cost:.4f}"
+        fmt = theme_vars.get("format", "{cost}")
+        usd = input.cost.total_cost_usd
+        if usd < 0.01:
+            cost = f"${usd:.4f}"
         else:
-            value = f"${cost:.2f}"
-        space = " " if label else ""
-        return f"[{color}]{label}{space}{value}[/{color}]"
+            cost = f"${usd:.2f}"
+        values = {**asdict(input.cost), "cost": cost, **theme_vars}
+        return fmt.format(**values)

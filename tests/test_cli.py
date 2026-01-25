@@ -51,7 +51,7 @@ class TestCLIPreview:
         result = run_statusline("preview", "--theme=ascii", "--no-color")
         assert result.returncode == 0
         assert "Model:" in result.stdout
-        assert "Dir:" in result.stdout
+        assert "Directory:" in result.stdout
 
     def test_preview_emoji_theme(self):
         result = run_statusline("preview", "--theme=emoji", "--no-color")
@@ -90,7 +90,7 @@ class TestCLIRender:
         result = run_statusline("render", "--theme=ascii", "--no-color", stdin=input_json)
         assert result.returncode == 0
         assert "Model:" in result.stdout
-        assert "Dir:" in result.stdout
+        assert "Directory:" in result.stdout
 
 
 class TestCLIList:

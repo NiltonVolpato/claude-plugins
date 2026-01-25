@@ -16,15 +16,8 @@ class VersionModule(Module):
 
     name = "version"
 
-    def render(
-        self, input: StatuslineInput, theme_vars: dict[str, str], color: str
-    ) -> str:
+    def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the Claude Code version."""
-        label = theme_vars.get("label", "")
-        version = input.version
-        if not version:
-            value = "v?"
-        else:
-            value = f"v{version}"
-        space = " " if label else ""
-        return f"[{color}]{label}{space}{value}[/{color}]"
+        fmt = theme_vars.get("format", "v{version}")
+        values = {"version": input.version or "?", **theme_vars}
+        return fmt.format(**values)

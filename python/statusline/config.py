@@ -16,6 +16,7 @@ class ModuleConfig:
     """Configuration for a single module."""
 
     color: str = ""
+    format: str = ""  # Default format string with Rich markup
     theme: str | None = None  # Per-module theme override
     themes: dict[str, dict[str, str]] = field(default_factory=dict)
 
@@ -41,10 +42,24 @@ class Config:
         return self.module_configs.get(module_name, ModuleConfig())
 
     def get_theme_vars(self, module_name: str) -> dict[str, str]:
-        """Get the resolved theme variables for a module."""
+        """Get the resolved theme variables for a module.
+
+        Merges module-level format with theme-specific variables.
+        Theme vars can override the format.
+        """
         module_config = self.get_module_config(module_name)
         theme_name = module_config.theme or self.theme
-        return module_config.themes.get(theme_name, {})
+
+        # Start with module-level format
+        result: dict[str, str] = {}
+        if module_config.format:
+            result["format"] = module_config.format
+
+        # Theme vars override (including format if specified)
+        theme_vars = module_config.themes.get(theme_name, {})
+        result.update(theme_vars)
+
+        return result
 
     def get_module_color(self, module_name: str) -> str:
         """Get the color for a module."""
@@ -72,6 +87,7 @@ def _parse_module_config(data: dict[str, Any]) -> ModuleConfig:
 
     return ModuleConfig(
         color=data.get("color", ""),
+        format=data.get("format", ""),
         theme=data.get("theme"),
         themes=themes,
     )
