@@ -165,15 +165,15 @@ def load_config(path: Path | None = None) -> Config:
 
 def generate_default_config_toml() -> str:
     """Generate default config file content for users to customize."""
-    return '''\
+    return """\
 # Statusline configuration
 # Location: ~/.claude/statusline.toml
 
 # Global defaults
-theme = "nerd"      # nerd | ascii | emoji | minimal
-color = true
-enabled = ["model", "workspace"]
-separator = " | "
+# theme = "nerd"      # nerd | ascii | emoji | minimal
+# color = true
+# enabled = ["model", "workspace", "context"]
+# separator = " | "
 
 # Per-module overrides (uncomment to customize)
 # [modules.model]
@@ -185,4 +185,4 @@ separator = " | "
 #
 # [modules.model.themes.custom]  # Create your own theme
 # label = "MODEL:"
-'''
+"""
