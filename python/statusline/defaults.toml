@@ -12,7 +12,7 @@ format = "[cyan]{label}{display_name}[/cyan]"
 themes.nerd.label = "\uee0d  "
 themes.ascii.label = "Model: "
 themes.emoji.label = "🤖 "
-themes.minimal.label = ""
+themes.minimal.format = "[cyan]{display_name}[/cyan]"
 
 [modules.workspace]
 color = "blue"
