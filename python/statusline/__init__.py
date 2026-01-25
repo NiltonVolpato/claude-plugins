@@ -1,2 +1,2 @@
 def main() -> None:
-    print("Hello from claude-plugins!")
+    print("Hello from statusline!")
