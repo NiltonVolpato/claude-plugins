@@ -49,6 +49,7 @@ def merge_cli_options(
 
 @app.command()
 def render(
+    ctx: typer.Context,
     modules: Annotated[
         str | None,
         typer.Option(
@@ -84,51 +85,15 @@ def render(
     """Render the status line (reads JSON from stdin)."""
     config = load_config()
     config = merge_cli_options(config, modules, separator, theme, color)
-    input_data = parse_input(sys.stdin)
+    if ctx.command.name == "render":
+        input_data = parse_input(sys.stdin)
+    else:
+        input_data = get_sample_input()
     output = render_statusline(input_data, config)
     print(output)
 
 
-@app.command()
-def preview(
-    modules: Annotated[
-        str | None,
-        typer.Option(
-            "--modules",
-            "-m",
-            help="Comma-separated list of modules to display.",
-        ),
-    ] = None,
-    separator: Annotated[
-        str | None,
-        typer.Option(
-            "--separator",
-            "-s",
-            help="Separator between modules.",
-        ),
-    ] = None,
-    theme: Annotated[
-        str | None,
-        typer.Option(
-            "--theme",
-            "-t",
-            help="Theme: nerd, ascii, emoji, or minimal.",
-        ),
-    ] = None,
-    color: Annotated[
-        bool,
-        typer.Option(
-            "--color/--no-color",
-            help="Enable or disable colors.",
-        ),
-    ] = True,
-) -> None:
-    """Preview the status line with sample data."""
-    config = load_config()
-    config = merge_cli_options(config, modules, separator, theme, color)
-    input_data = get_sample_input()
-    output = render_statusline(input_data, config)
-    print(output)
+preview = app.command(name="preview")(render)
 
 
 @app.command()

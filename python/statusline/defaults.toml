@@ -3,80 +3,40 @@
 
 theme = "nerd"
 color = true
-enabled = ["model", "workspace"]
+enabled = ["model", "workspace", "context"]
 separator = " | "
 
 [modules.model]
 color = "cyan"
-
-[modules.model.themes.nerd]
-label = ""
-
-[modules.model.themes.ascii]
-label = "Model:"
-
-[modules.model.themes.emoji]
-label = "🤖"
-
-[modules.model.themes.minimal]
-label = ""
+themes.nerd.label = "\uee0d "
+themes.ascii.label = "Model:"
+themes.emoji.label = "🤖"
+themes.minimal.label = ""
 
 [modules.workspace]
 color = "blue"
-
-[modules.workspace.themes.nerd]
-label = ""
-
-[modules.workspace.themes.ascii]
-label = "Dir:"
-
-[modules.workspace.themes.emoji]
-label = "📁"
-
-[modules.workspace.themes.minimal]
-label = ""
+themes.nerd.label = "\uf07c "
+themes.ascii.label = "Directory:"
+themes.emoji.label = "📁"
+themes.minimal.label = ""
 
 [modules.cost]
 color = "green"
-
-[modules.cost.themes.nerd]
-label = ""
-
-[modules.cost.themes.ascii]
-label = "$"
-
-[modules.cost.themes.emoji]
-label = "💰"
-
-[modules.cost.themes.minimal]
-label = ""
+themes.nerd.label = "\uef8d "
+themes.ascii.label = "Cost:"
+themes.emoji.label = "💰"
+themes.minimal.label = ""
 
 [modules.context]
 color = "yellow"
-
-[modules.context.themes.nerd]
-label = ""
-
-[modules.context.themes.ascii]
-label = "Ctx:"
-
-[modules.context.themes.emoji]
-label = "📊"
-
-[modules.context.themes.minimal]
-label = ""
+themes.nerd.label = "\uede8 "
+themes.ascii.label = "Context:"
+themes.emoji.label = "📊"
+themes.minimal.label = ""
 
 [modules.version]
 color = "dim"
-
-[modules.version.themes.nerd]
-label = ""
-
-[modules.version.themes.ascii]
-label = "v"
-
-[modules.version.themes.emoji]
-label = "📦"
-
-[modules.version.themes.minimal]
-label = ""
+themes.nerd.label = "\uf487 "
+themes.ascii.label = "Version:"
+themes.emoji.label = "📦"
+themes.minimal.label = ""
