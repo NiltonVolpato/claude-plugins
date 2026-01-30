@@ -1,5 +1,7 @@
 """Unit tests for statusline renderer."""
 
+from pathlib import Path
+
 from statusline.config import Config, load_config
 from statusline.input import (
     ModelInfo,
@@ -9,27 +11,28 @@ from statusline.input import (
 from statusline.renderer import render_statusline
 
 
-def make_input(**kwargs) -> StatuslineInput:
+def make_input(
+    model: ModelInfo | None = None,
+    workspace: WorkspaceInfo | None = None,
+    version: str = "1.2.3",
+) -> StatuslineInput:
     """Create a StatuslineInput with custom values."""
-    defaults = {
-        "model": ModelInfo(id="test-model", display_name="Test Model"),
-        "workspace": WorkspaceInfo(
+    return StatuslineInput(
+        model=model or ModelInfo(id="test-model", display_name="Test Model"),
+        workspace=workspace
+        or WorkspaceInfo(
             current_dir="/home/user/my-project",
             project_dir="/home/user/my-project",
         ),
-        "version": "1.2.3",
-    }
-    defaults.update(kwargs)
-    return StatuslineInput(**defaults)
+        version=version,
+    )
 
 
-def make_config(**kwargs) -> Config:
+def make_config(**kwargs: object) -> Config:
     """Create a Config using defaults and overriding with kwargs.
 
     Uses /dev/null as config path to avoid loading user config for hermeticity.
     """
-    from pathlib import Path
-
     config = load_config(Path("/dev/null"))
     # Override with kwargs
     for key, value in kwargs.items():

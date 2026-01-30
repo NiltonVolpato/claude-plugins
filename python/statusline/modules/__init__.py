@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
-
-if TYPE_CHECKING:
-    from statusline.input import StatuslineInput
 
 
 class Module(ABC):
