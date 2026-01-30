@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TextIO
 
 from pydantic import BaseModel, ValidationError
@@ -65,19 +66,21 @@ def parse_input(stdin: TextIO) -> StatuslineInput:
 
 def get_sample_input() -> StatuslineInput:
     """Get sample input for preview mode."""
+    # Use actual cwd so git module can show real status in preview
+    cwd = os.getcwd()
     return StatuslineInput(
         hook_event_name="Status",
         session_id="sample-session-id",
         transcript_path="/path/to/transcript.json",
-        cwd="/home/user/my-project",
+        cwd=cwd,
         version="2.0.76",
         model=ModelInfo(
             id="claude-opus-4-5-20251101",
             display_name="Opus 4.5",
         ),
         workspace=WorkspaceInfo(
-            current_dir="/home/user/my-project",
-            project_dir="/home/user/my-project",
+            current_dir=cwd,
+            project_dir=cwd,
         ),
         cost=CostInfo(
             total_cost_usd=0.0123,

@@ -56,6 +56,7 @@ uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline previe
 |--------|-------------|---------|
 | `model` | Model display name | Opus 4.5 |
 | `workspace` | Current directory | my-project |
+| `git` | Git branch and status | main*↑2 |
 | `cost` | Session cost | $0.01 |
 | `context` | Context window usage | 42% |
 | `version` | Claude Code version | v2.0.76 |

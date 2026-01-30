@@ -33,7 +33,8 @@ class TestCLIPreview:
         result = run_statusline("preview")
         assert result.returncode == 0
         assert "Opus 4.5" in result.stdout
-        assert "my-project" in result.stdout
+        # Workspace now uses actual cwd for preview
+        assert "claude-plugins" in result.stdout
 
     def test_preview_custom_modules(self):
         result = run_statusline("preview", "--modules=model,version", "--theme=minimal", "--no-color")

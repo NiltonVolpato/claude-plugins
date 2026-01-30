@@ -43,7 +43,7 @@ class TestRenderer:
 
     def test_render_multiple_modules(self):
         input_data = make_input()
-        config = make_config(enabled=["model", "workspace"], theme="minimal", color=False)
+        config = make_config(enabled=["model", "workspace"], theme="minimal", color=False, separator=" | ")
         result = render_statusline(input_data, config)
         assert result == "Test Model | my-project"
 
@@ -70,6 +70,7 @@ class TestRenderer:
             enabled=["model", "nonexistent", "workspace"],
             theme="minimal",
             color=False,
+            separator=" | ",
         )
         result = render_statusline(input_data, config)
         assert result == "Test Model | my-project"

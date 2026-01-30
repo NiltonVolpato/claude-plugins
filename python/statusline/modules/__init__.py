@@ -52,6 +52,6 @@ def get_all_modules() -> list[str]:
 
 
 # Import modules to register them
-from statusline.modules import context, cost, model, version, workspace
+from statusline.modules import context, cost, git, model, version, workspace
 
 __all__ = ["Module", "register", "get_module", "get_all_modules"]

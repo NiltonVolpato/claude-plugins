@@ -45,3 +45,11 @@ themes.nerd.label = "\uf487  "
 themes.ascii.label = "Version: "
 themes.emoji.label = "📦 "
 themes.minimal.label = ""
+
+[modules.git]
+color = "magenta"
+format = "[magenta]{{ label }}{{ branch }}{{ dirty_indicator }}{{ ahead_behind }}[/magenta]"
+themes.nerd.label = "\uea68  "
+themes.ascii.label = "Git: "
+themes.emoji.label = "🌿 "
+themes.minimal.label = ""
