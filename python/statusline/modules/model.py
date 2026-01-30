@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from statusline.input import ModelInfo
 from statusline.modules import Module, register
 from statusline.templates import render_template
 
@@ -16,6 +17,7 @@ class ModelModule(Module):
     """Display the model name."""
 
     name = "model"
+    __inputs__ = [ModelInfo]
 
     def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the model display name."""

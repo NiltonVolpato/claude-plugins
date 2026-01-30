@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
 if TYPE_CHECKING:
     from statusline.input import StatuslineInput
 
@@ -13,6 +15,8 @@ class Module(ABC):
     """Base class for statusline modules."""
 
     name: str = ""
+    __inputs__: list[type[BaseModel]] = []
+    """List of Pydantic models whose fields are available as template variables."""
 
     @abstractmethod
     def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
@@ -26,6 +30,22 @@ class Module(ABC):
             Rich-formatted string (e.g., "[cyan] Opus 4.5[/cyan]").
         """
         ...
+
+    @classmethod
+    def get_template_vars(cls) -> dict[str, str]:
+        """Get available template variables with their descriptions.
+
+        Returns:
+            Dict mapping variable names to their descriptions (from field docstrings).
+        """
+        result: dict[str, str] = {}
+        for model_cls in cls.__inputs__:
+            for field_name, field_info in model_cls.model_fields.items():
+                desc = field_info.description or ""
+                result[field_name] = desc
+        # Always include 'label' from theme
+        result["label"] = "Theme-specific label/icon prefix"
+        return result
 
 
 # Module registry - maps module names to module classes
@@ -51,7 +71,19 @@ def get_all_modules() -> list[str]:
     return list(_registry.keys())
 
 
-# Import modules to register them
-from statusline.modules import context, cost, git, model, version, workspace
+def get_module_class(name: str) -> type[Module] | None:
+    """Get a module class by name (without instantiating)."""
+    return _registry.get(name)
 
-__all__ = ["Module", "register", "get_module", "get_all_modules"]
+
+# Import modules to register them
+from statusline.modules import (  # noqa: E402, F401
+    context,
+    cost,
+    git,
+    model,
+    version,
+    workspace,
+)
+
+__all__ = ["Module", "register", "get_module", "get_all_modules", "get_module_class"]

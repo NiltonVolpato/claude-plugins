@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from statusline.input import WorkspaceInfo
 from statusline.modules import Module, register
 from statusline.templates import render_template
 
@@ -16,6 +17,7 @@ class WorkspaceModule(Module):
     """Display the current workspace directory."""
 
     name = "workspace"
+    __inputs__ = [WorkspaceInfo]
 
     def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
         """Render the workspace directory basename."""

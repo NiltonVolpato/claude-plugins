@@ -1,8 +1,6 @@
 """Unit tests for statusline renderer."""
 
-import pytest
-
-from statusline.config import Config, ModuleConfig, load_config
+from statusline.config import Config, load_config
 from statusline.input import (
     ModelInfo,
     StatuslineInput,
@@ -26,8 +24,13 @@ def make_input(**kwargs) -> StatuslineInput:
 
 
 def make_config(**kwargs) -> Config:
-    """Create a Config using defaults and overriding with kwargs."""
-    config = load_config()
+    """Create a Config using defaults and overriding with kwargs.
+
+    Uses /dev/null as config path to avoid loading user config for hermeticity.
+    """
+    from pathlib import Path
+
+    config = load_config(Path("/dev/null"))
     # Override with kwargs
     for key, value in kwargs.items():
         setattr(config, key, value)
@@ -43,7 +46,9 @@ class TestRenderer:
 
     def test_render_multiple_modules(self):
         input_data = make_input()
-        config = make_config(enabled=["model", "workspace"], theme="minimal", color=False, separator=" | ")
+        config = make_config(
+            enabled=["model", "workspace"], theme="minimal", color=False
+        )
         result = render_statusline(input_data, config)
         assert result == "Test Model | my-project"
 
@@ -70,7 +75,6 @@ class TestRenderer:
             enabled=["model", "nonexistent", "workspace"],
             theme="minimal",
             color=False,
-            separator=" | ",
         )
         result = render_statusline(input_data, config)
         assert result == "Test Model | my-project"

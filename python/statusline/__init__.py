@@ -16,7 +16,7 @@ from statusline.config import (
     load_config,
 )
 from statusline.input import get_sample_input, parse_input
-from statusline.modules import get_all_modules
+from statusline.modules import get_all_modules, get_module_class
 from statusline.renderer import render_statusline
 
 app = typer.Typer(
@@ -81,9 +81,17 @@ def render(
             help="Enable or disable colors.",
         ),
     ] = True,
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to config file (use /dev/null to skip user config).",
+        ),
+    ] = None,
 ) -> None:
     """Render the status line (reads JSON from stdin)."""
-    config = load_config()
+    config = load_config(config_path)
     config = merge_cli_options(config, modules, separator, theme, color)
     if ctx.command.name == "render":
         input_data = parse_input(sys.stdin)
@@ -126,12 +134,35 @@ def install() -> None:
 
 
 @app.command(name="list")
-def list_modules() -> None:
-    """List all available modules."""
+def list_modules(
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Show template variables for each module.",
+        ),
+    ] = False,
+) -> None:
+    """List all available modules and their template variables."""
     modules = get_all_modules()
     typer.echo("Available modules:")
-    for module in modules:
-        typer.echo(f"  - {module}")
+    for module_name in modules:
+        if verbose:
+            typer.echo(f"\n  {module_name}:")
+            module_cls = get_module_class(module_name)
+            if module_cls:
+                template_vars = module_cls.get_template_vars()
+                for var_name, description in template_vars.items():
+                    if description:
+                        typer.echo(f"    {{ {var_name} }} - {description}")
+                    else:
+                        typer.echo(f"    {{ {var_name} }}")
+        else:
+            typer.echo(f"  - {module_name}")
+
+    if not verbose:
+        typer.echo("\nUse --verbose to see template variables for each module.")
 
 
 @app.command()

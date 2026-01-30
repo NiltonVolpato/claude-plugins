@@ -5,9 +5,18 @@ import subprocess
 import sys
 
 
-def run_statusline(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
-    """Run the statusline CLI with the given arguments."""
+def run_statusline(*args: str, stdin: str | None = None, use_user_config: bool = False) -> subprocess.CompletedProcess:
+    """Run the statusline CLI with the given arguments.
+
+    Args:
+        *args: CLI arguments
+        stdin: Input to pass via stdin
+        use_user_config: If False (default), uses --config=/dev/null for hermeticity
+    """
     cmd = [sys.executable, "-m", "statusline", *args]
+    # Add --config=/dev/null for hermetic tests (only for render/preview commands)
+    if not use_user_config and args and args[0] in ("render", "preview"):
+        cmd.append("--config=/dev/null")
     return subprocess.run(
         cmd,
         input=stdin,
