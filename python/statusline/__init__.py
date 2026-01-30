@@ -94,6 +94,13 @@ def render(
     config = load_config(config_path)
     config = merge_cli_options(config, modules, separator, theme, color)
     if ctx.command.name == "render":
+        if sys.stdin.isatty():
+            typer.echo(
+                "Error: 'render' expects JSON input via stdin.\n"
+                "Use 'statusline preview' to see sample output, or pipe JSON to this command.",
+                err=True,
+            )
+            raise typer.Exit(1)
         input_data = parse_input(sys.stdin)
     else:
         input_data = get_sample_input()
@@ -101,7 +108,9 @@ def render(
     print(output)
 
 
-preview = app.command(name="preview")(render)
+preview = app.command(name="preview", help="Render a preview of the status line")(
+    render
+)
 
 
 @app.command()
