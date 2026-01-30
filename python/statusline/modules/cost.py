@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pydantic import BaseModel
 
 from statusline.input import CostInfo
 from statusline.modules import Module, register
 from statusline.templates import render_template
-
-if TYPE_CHECKING:
-    from statusline.input import StatuslineInput
 
 
 @register
@@ -19,8 +16,12 @@ class CostModule(Module):
     name = "cost"
     __inputs__ = [CostInfo]
 
-    def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
+    def render(self, inputs: dict[str, BaseModel], theme_vars: dict[str, str]) -> str:
         """Render the session cost in USD."""
+        cost_info = inputs.get("cost")
+        if not cost_info:
+            return ""
+
         fmt = theme_vars.get("format", "{{ total_cost_usd | format_cost }}")
-        context = {**input.cost.model_dump(), **theme_vars}
+        context = {**cost_info.model_dump(), **theme_vars}
         return render_template(fmt, context)

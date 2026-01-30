@@ -19,11 +19,12 @@ class Module(ABC):
     """List of Pydantic models whose fields are available as template variables."""
 
     @abstractmethod
-    def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
+    def render(self, inputs: dict[str, BaseModel], theme_vars: dict[str, str]) -> str:
         """Render the module output with Rich markup.
 
         Args:
-            input: The parsed input from Claude Code.
+            inputs: Dict mapping input names to their Pydantic model instances.
+                    Keys are lowercase names without 'Info' suffix (e.g., 'git', 'model').
             theme_vars: Theme variables including 'format' and 'label'.
 
         Returns:

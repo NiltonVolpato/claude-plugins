@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pydantic import BaseModel
 
 from statusline.input import VersionInfo
 from statusline.modules import Module, register
 from statusline.templates import render_template
-
-if TYPE_CHECKING:
-    from statusline.input import StatuslineInput
 
 
 @register
@@ -19,8 +16,12 @@ class VersionModule(Module):
     name = "version"
     __inputs__ = [VersionInfo]
 
-    def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
+    def render(self, inputs: dict[str, BaseModel], theme_vars: dict[str, str]) -> str:
         """Render the Claude Code version."""
+        version_info = inputs.get("version")
+        if not version_info:
+            return ""
+
         fmt = theme_vars.get("format", "v{{ version }}")
-        context = {"version": input.version or "?", **theme_vars}
+        context = {**version_info.model_dump(), **theme_vars}
         return render_template(fmt, context)

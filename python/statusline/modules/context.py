@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pydantic import BaseModel
 
 from statusline.input import ContextWindowInfo
 from statusline.modules import Module, register
 from statusline.templates import render_template
-
-if TYPE_CHECKING:
-    from statusline.input import StatuslineInput
 
 
 @register
@@ -19,8 +16,12 @@ class ContextModule(Module):
     name = "context"
     __inputs__ = [ContextWindowInfo]
 
-    def render(self, input: StatuslineInput, theme_vars: dict[str, str]) -> str:
+    def render(self, inputs: dict[str, BaseModel], theme_vars: dict[str, str]) -> str:
         """Render the context window usage percentage."""
+        context_info = inputs.get("contextwindow")
+        if not context_info:
+            return ""
+
         fmt = theme_vars.get("format", "{{ used_percentage | format_percent }}")
-        context = {**input.context_window.model_dump(), **theme_vars}
+        context = {**context_info.model_dump(), **theme_vars}
         return render_template(fmt, context)
