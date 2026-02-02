@@ -4,42 +4,35 @@ from __future__ import annotations
 
 import importlib.resources
 import tomllib
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 CONFIG_PATH = Path.home() / ".claude" / "statusline.toml"
 
 
-@dataclass
-class ModuleConfig:
+class ModuleConfig(BaseModel):
     """Configuration for a single module."""
 
     color: str = ""
     format: str = ""  # Default format string with Rich markup
     theme: str | None = None  # Per-module theme override
-    themes: dict[str, dict[str, str]] = field(default_factory=dict)
+    themes: dict[str, dict[str, str]] = Field(default_factory=dict)
 
 
-@dataclass
-class Config:
+class Config(BaseModel):
     """Global statusline configuration."""
 
     theme: str = "nerd"
     color: bool = True
-    enabled: list[str] = field(default_factory=lambda: ["model", "workspace"])
+    enabled: list[str] = Field(default_factory=lambda: ["model", "workspace"])
     separator: str = " | "
-    module_configs: dict[str, ModuleConfig] = field(default_factory=dict)
-
-    # Alias for backward compatibility
-    @property
-    def modules(self) -> list[str]:
-        """Alias for enabled modules."""
-        return self.enabled
+    modules: dict[str, ModuleConfig] = Field(default_factory=dict)
 
     def get_module_config(self, module_name: str) -> ModuleConfig:
         """Get configuration for a specific module."""
-        return self.module_configs.get(module_name, ModuleConfig())
+        return self.modules.get(module_name, ModuleConfig())
 
     def get_theme_vars(self, module_name: str) -> dict[str, str]:
         """Get the resolved theme variables for a module.
@@ -77,56 +70,13 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return result
 
 
-def _parse_module_config(data: dict[str, Any]) -> ModuleConfig:
-    """Parse module configuration from TOML data."""
-    themes: dict[str, dict[str, str]] = {}
-    themes_data = data.get("themes", {})
-    for theme_name, theme_vars in themes_data.items():
-        if isinstance(theme_vars, dict):
-            themes[theme_name] = {k: str(v) for k, v in theme_vars.items()}
-
-    return ModuleConfig(
-        color=data.get("color", ""),
-        format=data.get("format", ""),
-        theme=data.get("theme"),
-        themes=themes,
-    )
-
-
 def _parse_config(data: dict[str, Any]) -> Config:
     """Parse configuration from TOML data."""
-    # Parse global settings
-    theme = data.get("theme", "nerd")
-    if not isinstance(theme, str):
-        theme = "nerd"
-
-    enabled_list = data.get("enabled", ["model", "workspace"])
-    if not isinstance(enabled_list, list):
-        enabled_list = ["model", "workspace"]
-
-    color = data.get("color", True)
-    if not isinstance(color, bool):
-        color = True
-
-    separator = data.get("separator", " | ")
-    if not isinstance(separator, str):
-        separator = " | "
-
-    # Parse per-module configs
-    module_configs: dict[str, ModuleConfig] = {}
-    modules_data = data.get("modules", {})
-    if isinstance(modules_data, dict):
-        for name, module_data in modules_data.items():
-            if isinstance(module_data, dict):
-                module_configs[name] = _parse_module_config(module_data)
-
-    return Config(
-        theme=theme,
-        color=color,
-        enabled=enabled_list,
-        separator=separator,
-        module_configs=module_configs,
-    )
+    try:
+        return Config.model_validate(data)
+    except Exception:
+        # Fall back to defaults on validation error
+        return Config()
 
 
 def _load_defaults() -> dict[str, Any]:

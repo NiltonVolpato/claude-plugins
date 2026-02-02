@@ -34,10 +34,7 @@ def make_config(**kwargs: object) -> Config:
     Uses /dev/null as config path to avoid loading user config for hermeticity.
     """
     config = load_config(Path("/dev/null"))
-    # Override with kwargs
-    for key, value in kwargs.items():
-        setattr(config, key, value)
-    return config
+    return config.model_copy(update=kwargs)
 
 
 class TestRenderer:

@@ -34,7 +34,6 @@ class TestConfig:
         config = Config()
         assert config.theme == "nerd"
         assert config.color is True
-        assert config.modules == ["model", "workspace"]
         assert config.enabled == ["model", "workspace"]
         assert config.separator == " | "
 
@@ -47,11 +46,11 @@ class TestConfig:
         )
         assert config.theme == "ascii"
         assert config.color is False
-        assert config.modules == ["model", "cost"]
+        assert config.enabled == ["model", "cost"]
 
     def test_get_module_config(self):
         config = Config(
-            module_configs={
+            modules={
                 "model": ModuleConfig(color="red", theme="ascii"),
             }
         )
@@ -68,7 +67,7 @@ class TestConfig:
     def test_get_theme_vars(self):
         config = Config(
             theme="nerd",
-            module_configs={
+            modules={
                 "model": ModuleConfig(
                     themes={
                         "nerd": {"label": ""},
@@ -83,7 +82,7 @@ class TestConfig:
     def test_get_theme_vars_with_module_override(self):
         config = Config(
             theme="nerd",
-            module_configs={
+            modules={
                 "model": ModuleConfig(
                     theme="ascii",  # Override global theme
                     themes={
@@ -104,7 +103,7 @@ class TestLoadConfig:
         assert config.theme == "nerd"
         assert config.color is True
         # Check that defaults.toml was loaded
-        assert "model" in config.module_configs
+        assert "model" in config.modules
         theme_vars = config.get_theme_vars("model")
         # Nerd theme label includes the icon
         assert "label" in theme_vars
@@ -121,7 +120,7 @@ color = false
             assert config.theme == "ascii"
             assert config.color is False
             # Defaults should still be loaded for module configs
-            assert "model" in config.module_configs
+            assert "model" in config.modules
 
     def test_invalid_toml_uses_defaults(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:

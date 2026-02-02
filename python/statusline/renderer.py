@@ -24,7 +24,7 @@ def render_statusline(input: StatuslineInput, config: Config) -> str:
 
     parts: list[str] = []
 
-    for module_name in config.modules:
+    for module_name in config.enabled:
         module = get_module(module_name)
         if module is None:
             continue

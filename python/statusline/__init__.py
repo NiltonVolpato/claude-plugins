@@ -43,7 +43,7 @@ def merge_cli_options(
         color=color,
         enabled=parse_modules(modules) if modules else config.enabled,
         separator=separator if separator is not None else config.separator,
-        module_configs=config.module_configs,
+        modules=config.modules,
     )
 
 
