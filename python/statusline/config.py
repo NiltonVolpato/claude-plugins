@@ -15,6 +15,7 @@ CONFIG_PATH = Path.home() / ".claude" / "statusline.toml"
 class ModuleConfig(BaseModel):
     """Configuration for a single module."""
 
+    type: str | None = None  # Module type to use (defaults to config key)
     color: str = ""
     format: str = ""  # Default format string with Rich markup
     theme: str | None = None  # Per-module theme override
@@ -30,9 +31,20 @@ class Config(BaseModel):
     separator: str = " | "
     modules: dict[str, ModuleConfig] = Field(default_factory=dict)
 
-    def get_module_config(self, module_name: str) -> ModuleConfig:
-        """Get configuration for a specific module."""
-        return self.modules.get(module_name, ModuleConfig())
+    def get_module_config(self, alias: str) -> ModuleConfig:
+        """Get configuration for a module alias."""
+        return self.modules.get(alias, ModuleConfig())
+
+    def get_module_type(self, alias: str) -> str:
+        """Get the module type for an alias.
+
+        If the alias has a 'type' field in its config, use that.
+        Otherwise, the alias itself is the module type.
+        """
+        module_config = self.modules.get(alias)
+        if module_config and module_config.type:
+            return module_config.type
+        return alias
 
     def get_theme_vars(self, module_name: str) -> dict[str, str]:
         """Get the resolved theme variables for a module.

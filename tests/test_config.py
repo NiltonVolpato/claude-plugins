@@ -14,6 +14,7 @@ from statusline.config import (
 class TestModuleConfig:
     def test_default_values(self):
         config = ModuleConfig()
+        assert config.type is None
         assert config.color == ""
         assert config.theme is None
         assert config.themes == {}
@@ -27,6 +28,10 @@ class TestModuleConfig:
         assert config.color == "red"
         assert config.theme == "ascii"
         assert config.themes["nerd"]["label"] == ""
+
+    def test_type_field(self):
+        config = ModuleConfig(type="context")
+        assert config.type == "context"
 
 
 class TestConfig:
@@ -94,6 +99,29 @@ class TestConfig:
         )
         theme_vars = config.get_theme_vars("model")
         assert theme_vars == {"label": "Model:"}
+
+    def test_get_module_type_without_type_field(self):
+        """When no type field, alias is the module type."""
+        config = Config(
+            modules={
+                "model": ModuleConfig(color="red"),
+            }
+        )
+        assert config.get_module_type("model") == "model"
+
+    def test_get_module_type_with_type_field(self):
+        """When type field present, use it instead of alias."""
+        config = Config(
+            modules={
+                "ctx_percent": ModuleConfig(type="context"),
+            }
+        )
+        assert config.get_module_type("ctx_percent") == "context"
+
+    def test_get_module_type_unknown_alias(self):
+        """Unknown alias returns itself as type."""
+        config = Config()
+        assert config.get_module_type("unknown") == "unknown"
 
 
 class TestLoadConfig:

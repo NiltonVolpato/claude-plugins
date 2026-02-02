@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from statusline.config import Config, load_config
+from statusline.config import Config, ModuleConfig, load_config
 from statusline.input import (
     ModelInfo,
     StatuslineInput,
@@ -141,3 +141,71 @@ class TestRendererWithThemes:
         # Should contain ANSI codes
         assert "\x1b[" in result
         assert "Test Model" in result
+
+
+class TestRendererWithAliases:
+    def test_render_same_module_twice_with_different_formats(self):
+        """Test rendering the same module type twice with different configs."""
+        input_data = make_input()
+
+        config = make_config(
+            enabled=["model_one", "model_two"],
+            theme="minimal",
+            color=False,
+        )
+        config = config.model_copy(
+            update={
+                "modules": {
+                    **config.modules,
+                    "model_one": ModuleConfig(
+                        type="model",
+                        format="{{ display_name }}",
+                    ),
+                    "model_two": ModuleConfig(
+                        type="model",
+                        format="[{{ display_name }}]",
+                    ),
+                }
+            }
+        )
+
+        result = render_statusline(input_data, config)
+        assert "Test Model" in result
+        assert "[Test Model]" in result
+
+    def test_render_mixed_aliases_and_direct_modules(self):
+        """Test mixing aliases with direct module names."""
+        input_data = make_input()
+
+        config = make_config(
+            enabled=["model", "ws_alias"],
+            theme="minimal",
+            color=False,
+        )
+        config = config.model_copy(
+            update={
+                "modules": {
+                    **config.modules,
+                    "ws_alias": ModuleConfig(
+                        type="workspace",
+                        format="Dir: {{ current_dir | basename }}",
+                    ),
+                }
+            }
+        )
+
+        result = render_statusline(input_data, config)
+        assert "Test Model" in result
+        assert "Dir: my-project" in result
+
+    def test_backward_compatibility_without_type_field(self):
+        """Existing configs without type field still work."""
+        input_data = make_input()
+        config = make_config(
+            enabled=["model", "workspace"],
+            theme="minimal",
+            color=False,
+        )
+        result = render_statusline(input_data, config)
+        assert "Test Model" in result
+        assert "my-project" in result

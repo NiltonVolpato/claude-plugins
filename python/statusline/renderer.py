@@ -24,21 +24,24 @@ def render_statusline(input: StatuslineInput, config: Config) -> str:
 
     parts: list[str] = []
 
-    for module_name in config.enabled:
-        module = get_module(module_name)
+    for alias in config.enabled:
+        # Resolve module type from alias (supports multiple instances)
+        module_type = config.get_module_type(alias)
+
+        module = get_module(module_type)
         if module is None:
             continue
 
         # Get the module class to access __inputs__
-        module_cls = get_module_class(module_name)
+        module_cls = get_module_class(module_type)
         if module_cls is None:
             continue
 
         # Resolve inputs for this module (uses cache)
         inputs = resolver.resolve_for_module(module_cls.__inputs__)
 
-        # Get theme variables (includes format string)
-        theme_vars = config.get_theme_vars(module_name)
+        # Get theme variables using alias (for per-instance config)
+        theme_vars = config.get_theme_vars(alias)
 
         # Module renders with Rich markup
         rendered = module.render(inputs, theme_vars)

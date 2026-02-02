@@ -114,6 +114,25 @@ label = ""
 label = "Model:"
 ```
 
+#### Module Aliases
+
+Display the same module multiple times with different configurations using aliases:
+
+```toml
+enabled = ["model", "ctx_percent", "ctx_tokens"]
+
+[modules.ctx_percent]
+type = "context"  # Use the "context" module
+format = "[yellow]{{ used_percentage | format_percent }}[/yellow]"
+
+[modules.ctx_tokens]
+type = "context"  # Same module, different format
+format = "[dim]{{ total_input_tokens }}/{{ context_window_size }}[/dim]"
+```
+
+The `type` field specifies which module class to use. If omitted, the config key
+itself is treated as the module type (backward compatible).
+
 ### Customization
 
 ```bash
