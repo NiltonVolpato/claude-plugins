@@ -59,6 +59,7 @@ uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline previe
 | `git` | Git branch and status | main*↑2 |
 | `cost` | Session cost | $0.01 |
 | `context` | Context window usage | 42% |
+| `context_bar` | Context as progress bar | [████      ] 42% |
 | `version` | Claude Code version | v2.0.76 |
 
 ### Themes

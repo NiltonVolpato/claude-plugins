@@ -38,6 +38,12 @@ themes.ascii.label = "Context: "
 themes.emoji.label = "📊 "
 themes.minimal.label = ""
 
+# Example alias: progress bar variant of context module
+# Colors: green (<70%), yellow (70-85%), red (>=85%)
+[modules.context_bar]
+type = "context"
+format = "{{ used_percentage | format_progress_bar }}"
+
 [modules.version]
 color = "dim"
 format = "[dim]{{ label }}v{{ version }}[/dim]"

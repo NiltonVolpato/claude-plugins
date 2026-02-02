@@ -26,12 +26,32 @@ def _format_percent(value: float) -> str:
     return f"{value:.0f}%"
 
 
+def _format_progress_bar(value: float, width: int = 10) -> str:
+    """Format a progress bar with color based on usage.
+
+    Colors: green (<70%), yellow (70-85%), red (>=85%)
+    """
+    filled = int(value / 100 * width)
+    empty = width - filled
+    bar = "█" * filled + " " * empty
+
+    if value >= 85:
+        color = "red"
+    elif value >= 70:
+        color = "yellow"
+    else:
+        color = "green"
+
+    return f"[{color}]\\[{bar}][/{color}] {value:.0f}%"
+
+
 def create_environment() -> Environment:
     """Create Jinja2 environment with custom filters."""
     env = Environment()
     env.filters["basename"] = _basename
     env.filters["format_cost"] = _format_cost
     env.filters["format_percent"] = _format_percent
+    env.filters["format_progress_bar"] = _format_progress_bar
     return env
 
 
