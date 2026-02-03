@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import os
-from typing import TextIO
+from typing import ClassVar, TextIO
 
 from pydantic import BaseModel, Field, ValidationError
 
 
 class ModelInfo(BaseModel):
     """Model information from Claude Code."""
+
+    name: ClassVar[str] = "model"
 
     id: str = Field(default="", description="Model identifier (e.g., 'claude-opus-4-5-20251101')")
     display_name: str = Field(default="", description="Human-readable model name (e.g., 'Opus 4.5')")
@@ -18,12 +20,16 @@ class ModelInfo(BaseModel):
 class WorkspaceInfo(BaseModel):
     """Workspace information from Claude Code."""
 
+    name: ClassVar[str] = "workspace"
+
     current_dir: str = Field(default="", description="Current working directory path")
     project_dir: str = Field(default="", description="Project root directory path")
 
 
 class CostInfo(BaseModel):
     """Cost information from Claude Code."""
+
+    name: ClassVar[str] = "cost"
 
     total_cost_usd: float = Field(default=0.0, description="Total session cost in USD")
     total_duration_ms: int = Field(default=0, description="Total session duration in milliseconds")
@@ -35,6 +41,8 @@ class CostInfo(BaseModel):
 class ContextWindowInfo(BaseModel):
     """Context window information from Claude Code."""
 
+    name: ClassVar[str] = "context"
+
     total_input_tokens: int = Field(default=0, description="Total input tokens used")
     total_output_tokens: int = Field(default=0, description="Total output tokens generated")
     context_window_size: int = Field(default=200000, description="Maximum context window size")
@@ -44,6 +52,8 @@ class ContextWindowInfo(BaseModel):
 
 class GitInfo(BaseModel):
     """Git repository status information."""
+
+    name: ClassVar[str] = "git"
 
     branch: str = Field(default="", description="Current branch name (or commit hash if detached)")
     oid: str = Field(default="", description="Short commit hash (first 7 characters)")
@@ -57,6 +67,8 @@ class GitInfo(BaseModel):
 
 class VersionInfo(BaseModel):
     """Version information."""
+
+    name: ClassVar[str] = "version"
 
     version: str = Field(default="", description="Claude Code version string")
 

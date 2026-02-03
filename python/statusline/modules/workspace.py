@@ -19,11 +19,7 @@ class WorkspaceModule(Module):
 
     def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
         """Render the workspace directory basename."""
-        workspace_info = inputs.get("workspace")
-        if not workspace_info:
+        fmt, context = self.build_context(inputs, theme_vars)
+        if not fmt:
             return ""
-
-        fmt = theme_vars.get("format", "{{ current_dir | basename }}")
-        assert isinstance(fmt, str)
-        context = {**workspace_info.model_dump(), **theme_vars}
         return render_template(fmt, context)

@@ -19,11 +19,11 @@ class ContextModule(Module):
 
     def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
         """Render the context window usage percentage."""
-        context_info = inputs.get("contextwindow")
+        context_info = inputs.get("context")
         if not context_info:
             return ""
 
-        fmt = theme_vars.get("format", "{{ used_percentage | format_percent }}")
-        assert isinstance(fmt, str)
-        context = {**context_info.model_dump(), **theme_vars}
+        fmt, context = self.build_context(inputs, theme_vars)
+        if not fmt:
+            return ""
         return render_template(fmt, context)

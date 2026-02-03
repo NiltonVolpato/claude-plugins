@@ -19,11 +19,7 @@ class VersionModule(Module):
 
     def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
         """Render the Claude Code version."""
-        version_info = inputs.get("version")
-        if not version_info:
+        fmt, context = self.build_context(inputs, theme_vars)
+        if not fmt:
             return ""
-
-        fmt = theme_vars.get("format", "v{{ version }}")
-        assert isinstance(fmt, str)
-        context = {**version_info.model_dump(), **theme_vars}
         return render_template(fmt, context)

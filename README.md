@@ -124,11 +124,11 @@ enabled = ["model", "ctx_percent", "ctx_tokens"]
 
 [modules.ctx_percent]
 type = "context"  # Use the "context" module
-format = "[yellow]{{ used_percentage | format_percent }}[/yellow]"
+format = "[yellow]{{ context.used_percentage | format_percent }}[/yellow]"
 
 [modules.ctx_tokens]
 type = "context"  # Same module, different format
-format = "[dim]{{ total_input_tokens }}/{{ context_window_size }}[/dim]"
+format = "[dim]{{ context.total_input_tokens }}/{{ context.context_window_size }}[/dim]"
 ```
 
 The `type` field specifies which module class to use. If omitted, the config key

@@ -159,11 +159,11 @@ class TestRendererWithAliases:
                     **config.modules,
                     "model_one": ModuleConfig(
                         type="model",
-                        format="{{ display_name }}",
+                        format="{{ model.display_name }}",
                     ),
                     "model_two": ModuleConfig(
                         type="model",
-                        format="[{{ display_name }}]",
+                        format="[{{ model.display_name }}]",
                     ),
                 }
             }
@@ -188,7 +188,7 @@ class TestRendererWithAliases:
                     **config.modules,
                     "ws_alias": ModuleConfig(
                         type="workspace",
-                        format="Dir: {{ current_dir | basename }}",
+                        format="Dir: {{ workspace.current_dir | basename }}",
                     ),
                 }
             }

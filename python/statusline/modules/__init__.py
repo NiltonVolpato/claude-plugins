@@ -30,21 +30,17 @@ class Module(ABC):
         """
         ...
 
-    @classmethod
-    def get_template_vars(cls) -> dict[str, str]:
-        """Get available template variables with their descriptions.
+    def build_context(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> tuple[str, dict]:
+        """Build namespaced template context.
 
-        Returns:
-            Dict mapping variable names to their descriptions (from field docstrings).
+        Returns (format_string, context_dict).
+        Inputs namespaced under their model's `name` ClassVar.
+        Theme vars under 'theme'. No model_dump() — Jinja2 uses attribute access.
         """
-        result: dict[str, str] = {}
-        for model_cls in cls.__inputs__:
-            for field_name, field_info in model_cls.model_fields.items():
-                desc = field_info.description or ""
-                result[field_name] = desc
-        # Always include 'label' from theme
-        result["label"] = "Theme-specific label/icon prefix"
-        return result
+        fmt = theme_vars.get("format", "")
+        context: dict = {key: model for key, model in inputs.items()}
+        context["theme"] = theme_vars
+        return fmt, context
 
 
 # Module registry - maps module names to module classes

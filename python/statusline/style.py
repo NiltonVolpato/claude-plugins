@@ -25,6 +25,6 @@ def render_to_ansi(markup: str, use_color: bool) -> str:
     )
 
     with console.capture() as capture:
-        console.print(markup, end="", highlight=False)
+        console.print(markup, end="", highlight=False, soft_wrap=True)
 
     return capture.get()

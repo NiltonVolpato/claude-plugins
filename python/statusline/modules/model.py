@@ -19,11 +19,7 @@ class ModelModule(Module):
 
     def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
         """Render the model display name."""
-        model_info = inputs.get("model")
-        if not model_info:
+        fmt, context = self.build_context(inputs, theme_vars)
+        if not fmt:
             return ""
-
-        fmt = theme_vars.get("format", "{{ display_name }}")
-        assert isinstance(fmt, str)
-        context = {**model_info.model_dump(), **theme_vars}
         return render_template(fmt, context)

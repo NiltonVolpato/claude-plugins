@@ -23,8 +23,7 @@ class GitModule(Module):
         if not git_info or not git_info.branch:
             return ""
 
-        fmt = theme_vars.get(
-            "format", "{{ label }}{{ branch }}{{ dirty_indicator }}{{ ahead_behind }}"
-        )
-        context = {**git_info.model_dump(), **theme_vars}
+        fmt, context = self.build_context(inputs, theme_vars)
+        if not fmt:
+            return ""
         return render_template(fmt, context)

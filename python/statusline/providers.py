@@ -243,7 +243,6 @@ class InputResolver:
         for input_type in input_types:
             instance = self.resolve(input_type)
             if instance is not None:
-                # Convert class name to key: GitInfo -> git, ModelInfo -> model
-                key = input_type.__name__.replace("Info", "").lower()
+                key = input_type.name
                 result[key] = instance
         return result

@@ -19,11 +19,7 @@ class CostModule(Module):
 
     def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
         """Render the session cost in USD."""
-        cost_info = inputs.get("cost")
-        if not cost_info:
+        fmt, context = self.build_context(inputs, theme_vars)
+        if not fmt:
             return ""
-
-        fmt = theme_vars.get("format", "{{ total_cost_usd | format_cost }}")
-        assert isinstance(fmt, str)
-        context = {**cost_info.model_dump(), **theme_vars}
         return render_template(fmt, context)
