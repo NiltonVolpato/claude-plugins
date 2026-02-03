@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+import humanize
 from jinja2 import Environment
 
 
@@ -67,6 +68,14 @@ def _format_progress_bar(value: float, bar: dict | None = None) -> str:
     return f"[{color}]{bar_text}[/{color}] {value:.0f}%"
 
 
+def _humanize_metric(value: int | float, *, spaces: bool = True, **kwargs) -> str:
+    """Wrap humanize.metric with optional space removal."""
+    result = humanize.metric(value, **kwargs)
+    if not spaces:
+        return result.replace(" ", "")
+    return result
+
+
 def create_environment() -> Environment:
     """Create Jinja2 environment with custom filters."""
     env = Environment()
@@ -74,6 +83,9 @@ def create_environment() -> Environment:
     env.filters["format_cost"] = _format_cost
     env.filters["format_percent"] = _format_percent
     env.filters["format_progress_bar"] = _format_progress_bar
+    env.filters["humanize.metric"] = _humanize_metric
+    env.filters["humanize.intword"] = humanize.intword
+    env.filters["humanize.intcomma"] = humanize.intcomma
     return env
 
 

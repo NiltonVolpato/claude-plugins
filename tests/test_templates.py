@@ -89,3 +89,45 @@ class TestFormatProgressBar:
         result = render_template("{{ value | format_progress_bar }}", {"value": 50})
         assert "█████" in result
         assert "50%" in result
+
+
+class TestHumanize:
+    """Tests for humanize-based filters."""
+
+    def test_metric_small_number(self):
+        result = render_template("{{ v | humanize.metric }}", {"v": 999})
+        assert result == "999"
+
+    def test_metric_thousands(self):
+        result = render_template("{{ v | humanize.metric }}", {"v": 200000})
+        assert result == "200 k"
+
+    def test_metric_millions(self):
+        result = render_template("{{ v | humanize.metric }}", {"v": 1500000})
+        assert result == "1.50 M"
+
+    def test_metric_with_unit(self):
+        result = render_template(
+            '{{ v | humanize.metric(unit="V") }}', {"v": 1500}
+        )
+        assert result == "1.50 kV"
+
+    def test_metric_no_spaces(self):
+        result = render_template(
+            "{{ v | humanize.metric(spaces=False) }}", {"v": 200000}
+        )
+        assert result == "200k"
+
+    def test_metric_no_spaces_millions(self):
+        result = render_template(
+            "{{ v | humanize.metric(spaces=False) }}", {"v": 1500000}
+        )
+        assert result == "1.50M"
+
+    def test_intword(self):
+        result = render_template("{{ v | humanize.intword }}", {"v": 1200000000})
+        assert result == "1.2 billion"
+
+    def test_intcomma(self):
+        result = render_template("{{ v | humanize.intcomma }}", {"v": 1000000})
+        assert result == "1,000,000"
