@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel
 
+from statusline.config import ThemeVars
+
 
 class Module(ABC):
     """Base class for statusline modules."""
@@ -15,7 +17,7 @@ class Module(ABC):
     """List of Pydantic models whose fields are available as template variables."""
 
     @abstractmethod
-    def render(self, inputs: dict[str, BaseModel], theme_vars: dict[str, str]) -> str:
+    def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
         """Render the module output with Rich markup.
 
         Args:

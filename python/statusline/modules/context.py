@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from statusline.config import ThemeVars
 from statusline.input import ContextWindowInfo
 from statusline.modules import Module, register
 from statusline.templates import render_template
@@ -16,7 +17,7 @@ class ContextModule(Module):
     name = "context"
     __inputs__ = [ContextWindowInfo]
 
-    def render(self, inputs: dict[str, BaseModel], theme_vars: dict[str, str]) -> str:
+    def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
         """Render the context window usage percentage."""
         context_info = inputs.get("contextwindow")
         if not context_info:

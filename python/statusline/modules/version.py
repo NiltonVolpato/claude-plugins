@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from statusline.config import ThemeVars
 from statusline.input import VersionInfo
 from statusline.modules import Module, register
 from statusline.templates import render_template
@@ -16,7 +17,7 @@ class VersionModule(Module):
     name = "version"
     __inputs__ = [VersionInfo]
 
-    def render(self, inputs: dict[str, BaseModel], theme_vars: dict[str, str]) -> str:
+    def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
         """Render the Claude Code version."""
         version_info = inputs.get("version")
         if not version_info:

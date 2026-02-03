@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.resources
 import tomllib
 from pathlib import Path
-from typing import Any, TypeAlias, Union
+from typing import Any, Union
 
 from pydantic import BaseModel, Field
 

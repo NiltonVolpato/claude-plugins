@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from statusline.config import ThemeVars
 from statusline.input import ModelInfo
 from statusline.modules import Module, register
 from statusline.templates import render_template
@@ -16,7 +17,7 @@ class ModelModule(Module):
     name = "model"
     __inputs__ = [ModelInfo]
 
-    def render(self, inputs: dict[str, BaseModel], theme_vars: dict[str, str]) -> str:
+    def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
         """Render the model display name."""
         model_info = inputs.get("model")
         if not model_info:
