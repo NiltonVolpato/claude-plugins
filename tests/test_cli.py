@@ -103,15 +103,38 @@ class TestCLIRender:
         assert "Directory:" in result.stdout
 
 
-class TestCLIList:
-    def test_list_modules(self):
-        result = run_statusline("list")
+class TestCLIModules:
+    def test_modules_shorthand(self):
+        """Test `modules` as alias for `module ls`."""
+        result = run_statusline("modules")
         assert result.returncode == 0
         assert "model" in result.stdout
+        assert "context_bar" in result.stdout
+
+    def test_module_ls(self):
+        """Test `module ls` lists types and aliases."""
+        result = run_statusline("module", "ls")
+        assert result.returncode == 0
+        # Module types
+        assert "model" in result.stdout
         assert "workspace" in result.stdout
-        assert "cost" in result.stdout
         assert "context" in result.stdout
-        assert "version" in result.stdout
+        # Alias from defaults.toml
+        assert "context_bar" in result.stdout
+
+    def test_module_info(self):
+        result = run_statusline("module", "info", "model")
+        assert result.returncode == 0
+        assert "display_name" in result.stdout
+        assert "Preview:" in result.stdout
+        assert "Opus 4.5" in result.stdout
+
+    def test_module_info_alias(self):
+        result = run_statusline("module", "info", "context_bar")
+        assert result.returncode == 0
+        assert "Alias: context_bar" in result.stdout
+        assert "Type: context" in result.stdout
+        assert "Preview:" in result.stdout
 
 
 class TestCLIConfig:

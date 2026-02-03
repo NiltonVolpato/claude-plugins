@@ -142,36 +142,81 @@ def install() -> None:
     typer.echo("Restart Claude Code to see the changes.")
 
 
-@app.command(name="list")
-def list_modules(
-    verbose: Annotated[
-        bool,
-        typer.Option(
-            "--verbose",
-            "-v",
-            help="Show template variables for each module.",
-        ),
-    ] = False,
-) -> None:
-    """List all available modules and their template variables."""
-    modules = get_all_modules()
-    typer.echo("Available modules:")
-    for module_name in modules:
-        if verbose:
-            typer.echo(f"\n  {module_name}:")
-            module_cls = get_module_class(module_name)
-            if module_cls:
-                template_vars = module_cls.get_template_vars()
-                for var_name, description in template_vars.items():
-                    if description:
-                        typer.echo(f"    {{ {var_name} }} - {description}")
-                    else:
-                        typer.echo(f"    {{ {var_name} }}")
-        else:
-            typer.echo(f"  - {module_name}")
+def _list_modules() -> None:
+    """List all module types and configured aliases."""
+    config = load_config()
+    builtin_modules = get_all_modules()
 
-    if not verbose:
-        typer.echo("\nUse --verbose to see template variables for each module.")
+    typer.echo("Module types:")
+    for name in builtin_modules:
+        typer.echo(f"  {name}")
+
+    # Find aliases (config entries with a 'type' field)
+    aliases = [
+        (alias, cfg.type)
+        for alias, cfg in config.modules.items()
+        if cfg.type is not None
+    ]
+    if aliases:
+        typer.echo("\nConfigured aliases:")
+        for alias, module_type in aliases:
+            typer.echo(f"  {alias} -> {module_type}")
+
+
+# `statusline modules` - shorthand alias for `statusline module ls`
+@app.command(name="modules")
+def modules_shorthand() -> None:
+    """List available modules (alias for 'module ls')."""
+    _list_modules()
+
+
+# `statusline module` - subcommand group
+module_app = typer.Typer()
+app.add_typer(module_app, name="module", help="Manage modules.")
+
+
+@module_app.command(name="ls")
+def module_ls() -> None:
+    """List all module types and configured aliases."""
+    _list_modules()
+
+
+@module_app.command(name="info")
+def module_info(
+    name: Annotated[str, typer.Argument(help="Module name or alias to inspect.")],
+) -> None:
+    """Show details about a module or alias."""
+    config = load_config()
+
+    # Check if it's an alias
+    module_config = config.modules.get(name)
+    if module_config and module_config.type:
+        typer.echo(f"Alias: {name}")
+        typer.echo(f"Type: {module_config.type}")
+        if module_config.format:
+            typer.echo(f"Format: {module_config.format}")
+        module_type = module_config.type
+    else:
+        module_type = name
+
+    # Get module class info
+    module_cls = get_module_class(module_type)
+    if module_cls is None:
+        typer.echo(f"Unknown module: {module_type}", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"\nTemplate variables for '{module_type}':")
+    for var_name, description in module_cls.get_template_vars().items():
+        if description:
+            typer.echo(f"  {{ {var_name} }} - {description}")
+        else:
+            typer.echo(f"  {{ {var_name} }}")
+
+    # Render a preview with sample data
+    preview_config = config.model_copy(update={"enabled": [name]})
+    sample_input = get_sample_input()
+    output = render_statusline(sample_input, preview_config)
+    typer.echo(f"\nPreview: {output}")
 
 
 @app.command()
