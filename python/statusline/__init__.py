@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from rich import markup, table
+from rich.console import Console
 
 from statusline.config import (
     CONFIG_PATH,
@@ -16,13 +18,32 @@ from statusline.config import (
     load_config,
 )
 from statusline.input import get_sample_input, parse_input
-from statusline.modules import get_all_modules, get_module_class
+from statusline.modules import get_module
 from statusline.renderer import render_statusline
+
+
+class Context(typer.Context):
+    obj: Env
+
 
 app = typer.Typer(
     help="A customizable status line for Claude Code.",
     no_args_is_help=True,
 )
+
+
+class Env:
+    __slots__ = ("console",)
+    console: Console
+
+    def __init__(self, **fields):
+        for name, value in fields.items():
+            setattr(self, name, value)
+
+
+@app.callback()
+def main(ctx: Context, force_terminal: bool | None = None):
+    ctx.obj = Env(console=Console(force_terminal=force_terminal))
 
 
 def parse_modules(modules_str: str) -> list[str]:
@@ -49,7 +70,7 @@ def merge_cli_options(
 
 @app.command()
 def render(
-    ctx: typer.Context,
+    ctx: Context,
     modules: Annotated[
         str | None,
         typer.Option(
@@ -142,81 +163,92 @@ def install() -> None:
     typer.echo("Restart Claude Code to see the changes.")
 
 
-def _list_modules() -> None:
-    """List all module types and configured aliases."""
-    config = load_config()
-    builtin_modules = get_all_modules()
-
-    typer.echo("Module types:")
-    for name in builtin_modules:
-        typer.echo(f"  {name}")
-
-    # Find aliases (config entries with a 'type' field)
-    aliases = [
-        (alias, cfg.type)
-        for alias, cfg in config.modules.items()
-        if cfg.type is not None
-    ]
-    if aliases:
-        typer.echo("\nConfigured aliases:")
-        for alias, module_type in aliases:
-            typer.echo(f"  {alias} -> {module_type}")
-
-
-# `statusline modules` - shorthand alias for `statusline module ls`
-@app.command(name="modules")
-def modules_shorthand() -> None:
-    """List available modules (alias for 'module ls')."""
-    _list_modules()
-
-
 # `statusline module` - subcommand group
 module_app = typer.Typer()
 app.add_typer(module_app, name="module", help="Manage modules.")
 
 
 @module_app.command(name="ls")
-def module_ls() -> None:
+def module_ls(ctx: Context) -> None:
     """List all module types and configured aliases."""
-    _list_modules()
+    console = ctx.obj.console
+    config = load_config()
+
+    t = table.Table(
+        table.Column("Module Name", justify="left", style="blue"),
+        table.Column("Description", justify="left"),
+        box=None,
+        pad_edge=False,
+        header_style="bold dim",
+    )
+    for name, cfg in config.modules.items():
+        module = get_module(cfg.type or name)
+        description = module.__doc__ or ""
+        if cfg.type is not None:
+            description += f" [dim](type: {cfg.type})[/]"
+        t.add_row(name, description)
+    console.print(t)
+
+
+# `statusline modules` - shorthand alias for `statusline module ls`
+modules = app.command(
+    name="modules", help="List available modules (alias for `module ls`)."
+)(module_ls)
 
 
 @module_app.command(name="info")
 def module_info(
+    ctx: Context,
     name: Annotated[str, typer.Argument(help="Module name or alias to inspect.")],
 ) -> None:
     """Show details about a module or alias."""
+    console = ctx.obj.console
     config = load_config()
 
-    # Check if it's an alias
+    t = table.Table(
+        table.Column(justify="right", style="bold"),
+        table.Column(justify="left"),
+        box=None,
+        pad_edge=False,
+        show_header=False,
+    )
     module_config = config.modules.get(name)
-    if module_config and module_config.type:
-        typer.echo(f"Alias: {name}")
-        typer.echo(f"Type: {module_config.type}")
-        if module_config.format:
-            typer.echo(f"Format: {module_config.format}")
+    if module_config:
         module_type = module_config.type
+        module_format = markup.escape(module_config.format)
     else:
         module_type = name
+        module_format = None
 
-    # Get module class info
-    module_cls = get_module_class(module_type)
-    if module_cls is None:
-        typer.echo(f"Unknown module: {module_type}", err=True)
-        raise typer.Exit(1)
+    module = get_module(module_type or name)
+    if module is None:
+        typer.secho(f"Module [b]{name} unknown")
+        raise typer.Exit(code=2)
 
-    typer.echo(f"\nTemplate variables for '{module_type}':")
-    for var_name, description in module_cls.get_template_vars().items():
-        if description:
-            typer.echo(f"  {{ {var_name} }} - {description}")
-        else:
-            typer.echo(f"  {{ {var_name} }}")
+    t.add_row("Name", name)
+    if module_type is not None:
+        t.add_row("Type", module_type)
+    if module.__doc__:
+        t.add_row("Doc", module.__doc__)
+    if module_format is not None:
+        t.add_row("Format", module_format)
 
     # Render a preview with sample data
     preview_config = config.model_copy(update={"enabled": [name]})
     sample_input = get_sample_input()
     output = render_statusline(sample_input, preview_config)
-    typer.echo(f"\nPreview: {output}")
+
+    t.add_row("Preview", output)
+    console.print(t)
+    console.print()
+
+    console.print("[bold]Template variables:[/]")
+    t = table.Table(
+        table.Column(style="green", justify="right"), show_header=False, box=None
+    )
+    for name, description in module.get_template_vars().items():
+        t.add_row(name, description)
+    console.print(t)
 
 
 @app.command()
@@ -259,6 +291,6 @@ def config(
         typer.echo("Run 'statusline config --init' to create one.")
 
 
-def main() -> None:
-    """Entry point for the CLI."""
-    app()
+# def main() -> None:
+#     """Entry point for the CLI."""
+#     app()

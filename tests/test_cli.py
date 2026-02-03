@@ -126,15 +126,13 @@ class TestCLIModules:
         result = run_statusline("module", "info", "model")
         assert result.returncode == 0
         assert "display_name" in result.stdout
-        assert "Preview:" in result.stdout
         assert "Opus 4.5" in result.stdout
 
     def test_module_info_alias(self):
         result = run_statusline("module", "info", "context_bar")
         assert result.returncode == 0
-        assert "Alias: context_bar" in result.stdout
-        assert "Type: context" in result.stdout
-        assert "Preview:" in result.stdout
+        assert "context_bar" in result.stdout
+        assert "context" in result.stdout
 
 
 class TestCLIConfig:
