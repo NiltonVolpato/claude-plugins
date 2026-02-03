@@ -24,5 +24,6 @@ class ContextModule(Module):
             return ""
 
         fmt = theme_vars.get("format", "{{ used_percentage | format_percent }}")
+        assert isinstance(fmt, str)
         context = {**context_info.model_dump(), **theme_vars}
         return render_template(fmt, context)
