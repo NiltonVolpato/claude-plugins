@@ -8,7 +8,13 @@ from typing import ClassVar, TextIO
 from pydantic import BaseModel, Field, ValidationError
 
 
-class ModelInfo(BaseModel):
+class InputModel(BaseModel):
+    """Base class for statusline input models."""
+
+    name: ClassVar[str]
+
+
+class ModelInfo(InputModel):
     """Model information from Claude Code."""
 
     name: ClassVar[str] = "model"
@@ -17,7 +23,7 @@ class ModelInfo(BaseModel):
     display_name: str = Field(default="", description="Human-readable model name (e.g., 'Opus 4.5')")
 
 
-class WorkspaceInfo(BaseModel):
+class WorkspaceInfo(InputModel):
     """Workspace information from Claude Code."""
 
     name: ClassVar[str] = "workspace"
@@ -26,7 +32,7 @@ class WorkspaceInfo(BaseModel):
     project_dir: str = Field(default="", description="Project root directory path")
 
 
-class CostInfo(BaseModel):
+class CostInfo(InputModel):
     """Cost information from Claude Code."""
 
     name: ClassVar[str] = "cost"
@@ -38,7 +44,7 @@ class CostInfo(BaseModel):
     total_lines_removed: int = Field(default=0, description="Total lines of code removed")
 
 
-class ContextWindowInfo(BaseModel):
+class ContextWindowInfo(InputModel):
     """Context window information from Claude Code."""
 
     name: ClassVar[str] = "context"
@@ -50,7 +56,7 @@ class ContextWindowInfo(BaseModel):
     remaining_percentage: float = Field(default=100.0, description="Percentage of context window remaining")
 
 
-class GitInfo(BaseModel):
+class GitInfo(InputModel):
     """Git repository status information."""
 
     name: ClassVar[str] = "git"
@@ -65,7 +71,7 @@ class GitInfo(BaseModel):
     ahead_behind: str = Field(default="", description="Formatted string (e.g., '↑2↓1')")
 
 
-class VersionInfo(BaseModel):
+class VersionInfo(InputModel):
     """Version information."""
 
     name: ClassVar[str] = "version"

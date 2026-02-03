@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from statusline.config import ThemeVars
-from statusline.input import WorkspaceInfo
+from statusline.input import InputModel, WorkspaceInfo
 from statusline.modules import Module, register
 from statusline.templates import render_template
 
@@ -17,7 +15,7 @@ class WorkspaceModule(Module):
     name = "workspace"
     __inputs__ = [WorkspaceInfo]
 
-    def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
+    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> str:
         """Render the workspace directory basename."""
         fmt, context = self.build_context(inputs, theme_vars)
         if not fmt:

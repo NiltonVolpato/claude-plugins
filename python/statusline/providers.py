@@ -11,12 +11,11 @@ import subprocess
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
-
 from statusline.input import (
     ContextWindowInfo,
     CostInfo,
     GitInfo,
+    InputModel,
     ModelInfo,
     VersionInfo,
     WorkspaceInfo,
@@ -29,11 +28,11 @@ if TYPE_CHECKING:
 class InputProvider(ABC):
     """Base class for input providers."""
 
-    input_type: type[BaseModel]
+    input_type: type[InputModel]
     """The Pydantic model this provider produces."""
 
     @abstractmethod
-    def provide(self, input: StatuslineInput) -> BaseModel | None:
+    def provide(self, input: StatuslineInput) -> InputModel | None:
         """Produce the input data.
 
         Args:
@@ -46,7 +45,7 @@ class InputProvider(ABC):
 
 
 # Provider registry - maps input types to provider classes
-_provider_registry: dict[type[BaseModel], type[InputProvider]] = {}
+_provider_registry: dict[type[InputModel], type[InputProvider]] = {}
 
 
 def provider(cls: type[InputProvider]) -> type[InputProvider]:
@@ -55,7 +54,7 @@ def provider(cls: type[InputProvider]) -> type[InputProvider]:
     return cls
 
 
-def get_provider(input_type: type[BaseModel]) -> InputProvider | None:
+def get_provider(input_type: type[InputModel]) -> InputProvider | None:
     """Get a provider instance for the given input type."""
     provider_cls = _provider_registry.get(input_type)
     if provider_cls is None:
@@ -63,7 +62,7 @@ def get_provider(input_type: type[BaseModel]) -> InputProvider | None:
     return provider_cls()
 
 
-def get_all_providers() -> dict[type[BaseModel], type[InputProvider]]:
+def get_all_providers() -> dict[type[InputModel], type[InputProvider]]:
     """Get all registered providers."""
     return _provider_registry.copy()
 
@@ -214,9 +213,9 @@ class InputResolver:
 
     def __init__(self, input: StatuslineInput):
         self.input = input
-        self._cache: dict[type[BaseModel], BaseModel | None] = {}
+        self._cache: dict[type[InputModel], InputModel | None] = {}
 
-    def resolve(self, input_type: type[BaseModel]) -> BaseModel | None:
+    def resolve(self, input_type: type[InputModel]) -> InputModel | None:
         """Resolve an input type, using cache if available."""
         if input_type in self._cache:
             return self._cache[input_type]
@@ -230,7 +229,7 @@ class InputResolver:
         self._cache[input_type] = result
         return result
 
-    def resolve_for_module(self, input_types: list[type[BaseModel]]) -> dict[str, BaseModel]:
+    def resolve_for_module(self, input_types: list[type[InputModel]]) -> dict[str, InputModel]:
         """Resolve all inputs for a module.
 
         Args:
@@ -239,7 +238,7 @@ class InputResolver:
         Returns:
             Dict mapping input type name (lowercase, without 'Info' suffix) to instance.
         """
-        result: dict[str, BaseModel] = {}
+        result: dict[str, InputModel] = {}
         for input_type in input_types:
             instance = self.resolve(input_type)
             if instance is not None:

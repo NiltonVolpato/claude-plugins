@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from statusline.config import ThemeVars
-from statusline.input import GitInfo
+from statusline.input import GitInfo, InputModel
 from statusline.modules import Module, register
 from statusline.templates import render_template
 
@@ -17,7 +15,7 @@ class GitModule(Module):
     name = "git"
     __inputs__ = [GitInfo]
 
-    def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
+    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> str:
         """Render git status info."""
         git_info = inputs.get("git")
         if not git_info or not git_info.branch:

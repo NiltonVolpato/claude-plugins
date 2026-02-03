@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from statusline.config import ThemeVars
-from statusline.input import CostInfo
+from statusline.input import CostInfo, InputModel
 from statusline.modules import Module, register
 from statusline.templates import render_template
 
@@ -17,7 +15,7 @@ class CostModule(Module):
     name = "cost"
     __inputs__ = [CostInfo]
 
-    def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
+    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> str:
         """Render the session cost in USD."""
         fmt, context = self.build_context(inputs, theme_vars)
         if not fmt:

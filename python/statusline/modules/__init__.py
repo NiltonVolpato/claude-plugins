@@ -4,25 +4,23 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from pydantic import BaseModel
-
 from statusline.config import ThemeVars
+from statusline.input import InputModel
 
 
 class Module(ABC):
     """Base class for statusline modules."""
 
     name: str = ""
-    __inputs__: list[type[BaseModel]] = []
-    """List of Pydantic models whose fields are available as template variables."""
+    __inputs__: list[type[InputModel]] = []
+    """List of input models whose fields are available as template variables."""
 
     @abstractmethod
-    def render(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> str:
+    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> str:
         """Render the module output with Rich markup.
 
         Args:
-            inputs: Dict mapping input names to their Pydantic model instances.
-                    Keys are lowercase names without 'Info' suffix (e.g., 'git', 'model').
+            inputs: Dict mapping input names to their model instances.
             theme_vars: Theme variables including 'format' and 'label'.
 
         Returns:
@@ -30,7 +28,9 @@ class Module(ABC):
         """
         ...
 
-    def build_context(self, inputs: dict[str, BaseModel], theme_vars: ThemeVars) -> tuple[str, dict]:
+    def build_context(
+        self, inputs: dict[str, InputModel], theme_vars: ThemeVars
+    ) -> tuple[str, dict]:
         """Build namespaced template context.
 
         Returns (format_string, context_dict).
@@ -38,9 +38,10 @@ class Module(ABC):
         Theme vars under 'theme'. No model_dump() — Jinja2 uses attribute access.
         """
         fmt = theme_vars.get("format", "")
-        context: dict = {key: model for key, model in inputs.items()}
-        context["theme"] = theme_vars
-        return fmt, context
+        assert isinstance(fmt, str)
+        ctx: dict = {key: input for key, input in inputs.items()}
+        ctx["theme"] = theme_vars
+        return fmt, ctx
 
 
 # Module registry - maps module names to module classes
@@ -66,11 +67,6 @@ def get_all_modules() -> list[str]:
     return list(_registry.keys())
 
 
-def get_module_class(name: str) -> type[Module] | None:
-    """Get a module class by name (without instantiating)."""
-    return _registry.get(name)
-
-
 # Import modules to register them
 from statusline.modules import (  # noqa: E402, F401
     context,
@@ -81,4 +77,4 @@ from statusline.modules import (  # noqa: E402, F401
     workspace,
 )
 
-__all__ = ["Module", "register", "get_module", "get_all_modules", "get_module_class"]
+__all__ = ["Module", "register", "get_module", "get_all_modules"]

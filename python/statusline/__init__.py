@@ -18,7 +18,7 @@ from statusline.config import (
     load_config,
 )
 from statusline.input import get_sample_input, parse_input
-from statusline.modules import get_module, get_module_class
+from statusline.modules import get_module
 from statusline.renderer import render_statusline
 
 
@@ -251,24 +251,22 @@ def module_info(
     )
 
     # Inputs section — iterate __inputs__
-    module_cls = get_module_class(module_type or name)
-    if module_cls:
-        for input_cls in module_cls.__inputs__:
-            input_name = input_cls.name
-            input_doc = input_cls.__doc__ or ""
-            t.add_row(f"[bold]{input_name}[/]", f"[dim]({input_doc.strip()})[/]")
-            for field_name, field_info in input_cls.model_fields.items():
-                desc = field_info.description or ""
-                t.add_row(f"  {input_name}.{field_name}", desc)
+    for input_cls in module.__inputs__:
+        input_name = input_cls.name
+        input_doc = input_cls.__doc__ or ""
+        t.add_row(f"[bold]{input_name}[/]", f"[dim]({input_doc.strip()})[/]")
+        for field_name, field_info in input_cls.model_fields.items():
+            desc = field_info.description or ""
+            t.add_row(f"{input_name}.{field_name}", desc)
 
     # Theme section — show theme vars from config
     t.add_row("[bold]theme[/]", "[dim](from configuration)[/]")
     if module_config:
         for theme_name, theme_vars in sorted(module_config.themes.items()):
-            t.add_row(f"  [dim]{theme_name}[/]", "")
+            t.add_row(f"[dim]{theme_name}[/]", "")
             if isinstance(theme_vars, dict):
                 for key, val in theme_vars.items():
-                    t.add_row(f"    theme.{key}", markup.escape(repr(val)))
+                    t.add_row(f"theme.{key}", markup.escape(repr(val)))
 
     console.print(t)
 
