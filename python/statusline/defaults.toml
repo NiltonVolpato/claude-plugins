@@ -42,7 +42,31 @@ themes.minimal.label = ""
 # Colors: green (<70%), yellow (70-85%), red (>=85%)
 [modules.context_bar]
 type = "context"
-format = "{{ used_percentage | format_progress_bar }}"
+format = "{{ used_percentage | format_progress_bar(bar) }}"
+
+[modules.context_bar.themes.nerd.bar]
+full_left = "\uee03"
+full = "\uee04"
+full_right = "\uee05"
+empty_left = "\uee00"
+empty = "\uee01"
+empty_right = "\uee02"
+
+[modules.context_bar.themes.ascii.bar]
+left = "["
+right = "]"
+full = "#"
+empty = "."
+
+[modules.context_bar.themes.minimal.bar]
+left = ""
+right = ""
+
+[modules.context_bar.themes.emoji.bar]
+left = ""
+right = ""
+full = "🟩"
+empty = "⬜"
 
 [modules.version]
 color = "dim"

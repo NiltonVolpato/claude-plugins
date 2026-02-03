@@ -5,9 +5,12 @@ from __future__ import annotations
 import importlib.resources
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias, Union
 
 from pydantic import BaseModel, Field
+
+ThemeVars = dict[str, Union[str, int, dict[str, Union[str, int]]]]
+# type ThemeVars = dict[str, Union[str, int, ThemeVars]]
 
 CONFIG_PATH = Path.home() / ".claude" / "statusline.toml"
 
@@ -19,7 +22,7 @@ class ModuleConfig(BaseModel):
     color: str = ""
     format: str = ""  # Default format string with Rich markup
     theme: str | None = None  # Per-module theme override
-    themes: dict[str, dict[str, str]] = Field(default_factory=dict)
+    themes: dict[str, ThemeVars] = Field(default_factory=dict)
 
 
 class Config(BaseModel):
@@ -46,7 +49,7 @@ class Config(BaseModel):
             return module_config.type
         return alias
 
-    def get_theme_vars(self, module_name: str) -> dict[str, str]:
+    def get_theme_vars(self, module_name: str) -> ThemeVars:
         """Get the resolved theme variables for a module.
 
         Merges module-level format with theme-specific variables.
@@ -56,7 +59,7 @@ class Config(BaseModel):
         theme_name = module_config.theme or self.theme
 
         # Start with module-level format
-        result: dict[str, str] = {}
+        result: ThemeVars = {}
         if module_config.format:
             result["format"] = module_config.format
 

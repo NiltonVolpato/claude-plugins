@@ -26,14 +26,36 @@ def _format_percent(value: float) -> str:
     return f"{value:.0f}%"
 
 
-def _format_progress_bar(value: float, width: int = 10) -> str:
+def _format_progress_bar(value: float, bar: dict | None = None) -> str:
     """Format a progress bar with color based on usage.
 
     Colors: green (<70%), yellow (70-85%), red (>=85%)
+
+    Bar dict keys:
+        full, empty — middle segment chars (default █, space)
+        left, right — static caps (default [, ])
+        full_left, empty_left — override left based on fill state
+        full_right, empty_right — override right based on fill state
+        width — bar width in segments (default 10)
     """
-    filled = int(value / 100 * width)
-    empty = width - filled
-    bar = "█" * filled + " " * empty
+    bar = bar or {}
+    width = int(bar.get("width", 10))
+    full_char = str(bar.get("full", "█"))
+    empty_char = str(bar.get("empty", " "))
+    left = str(bar.get("left", "\\["))
+    right = str(bar.get("right", "]"))
+    full_left = str(bar.get("full_left", left))
+    empty_left = str(bar.get("empty_left", left))
+    full_right = str(bar.get("full_right", right))
+    empty_right = str(bar.get("empty_right", right))
+
+    n = int(value / 100 * width)
+    left_cap = full_left if n > 0 else empty_left
+    right_cap = full_right if n == width else empty_right
+    segments = full_char * n + empty_char * (width - n)
+
+    # Escape Rich markup in bar characters (e.g., literal "[" and "]")
+    bar_text = (left_cap + segments + right_cap).replace("[", "\\[")
 
     if value >= 85:
         color = "red"
@@ -42,7 +64,7 @@ def _format_progress_bar(value: float, width: int = 10) -> str:
     else:
         color = "green"
 
-    return f"[{color}]\\[{bar}][/{color}] {value:.0f}%"
+    return f"[{color}]{bar_text}[/{color}] {value:.0f}%"
 
 
 def create_environment() -> Environment:
