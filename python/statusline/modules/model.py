@@ -24,5 +24,6 @@ class ModelModule(Module):
             return ""
 
         fmt = theme_vars.get("format", "{{ display_name }}")
+        assert isinstance(fmt, str)
         context = {**model_info.model_dump(), **theme_vars}
         return render_template(fmt, context)

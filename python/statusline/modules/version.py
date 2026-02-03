@@ -24,5 +24,6 @@ class VersionModule(Module):
             return ""
 
         fmt = theme_vars.get("format", "v{{ version }}")
+        assert isinstance(fmt, str)
         context = {**version_info.model_dump(), **theme_vars}
         return render_template(fmt, context)

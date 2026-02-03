@@ -24,5 +24,6 @@ class CostModule(Module):
             return ""
 
         fmt = theme_vars.get("format", "{{ total_cost_usd | format_cost }}")
+        assert isinstance(fmt, str)
         context = {**cost_info.model_dump(), **theme_vars}
         return render_template(fmt, context)

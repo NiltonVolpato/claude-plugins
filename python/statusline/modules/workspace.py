@@ -24,5 +24,6 @@ class WorkspaceModule(Module):
             return ""
 
         fmt = theme_vars.get("format", "{{ current_dir | basename }}")
+        assert isinstance(fmt, str)
         context = {**workspace_info.model_dump(), **theme_vars}
         return render_template(fmt, context)
