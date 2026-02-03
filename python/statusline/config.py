@@ -5,12 +5,11 @@ from __future__ import annotations
 import importlib.resources
 import tomllib
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-ThemeVars = dict[str, Union[str, int, dict[str, Union[str, int]]]]
-# type ThemeVars = dict[str, Union[str, int, ThemeVars]]
+type ThemeVars = dict[str, str | int | ThemeVars]
 
 CONFIG_PATH = Path.home() / ".claude" / "statusline.toml"
 
