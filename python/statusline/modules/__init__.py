@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from rich.console import RenderableType
+
 from statusline.config import ThemeVars
 from statusline.input import InputModel
 
@@ -16,7 +18,7 @@ class Module(ABC):
     """List of input models whose fields are available as template variables."""
 
     @abstractmethod
-    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> str:
+    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> RenderableType:
         """Render the module output with Rich markup.
 
         Args:
@@ -24,7 +26,7 @@ class Module(ABC):
             theme_vars: Theme variables including 'format' and 'label'.
 
         Returns:
-            Rich-formatted string (e.g., "[cyan] Opus 4.5[/cyan]").
+            Rich renderable (string with markup, Table, etc.).
         """
         ...
 
@@ -70,6 +72,7 @@ def get_all_modules() -> list[str]:
 # Import modules to register them
 from statusline.modules import (  # noqa: E402, F401
     context,
+    context_bar,
     cost,
     git,
     model,

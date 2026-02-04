@@ -19,8 +19,12 @@ class ModelInfo(InputModel):
 
     name: ClassVar[str] = "model"
 
-    id: str = Field(default="", description="Model identifier (e.g., 'claude-opus-4-5-20251101')")
-    display_name: str = Field(default="", description="Human-readable model name (e.g., 'Opus 4.5')")
+    id: str = Field(
+        default="", description="Model identifier (e.g., 'claude-opus-4-5-20251101')"
+    )
+    display_name: str = Field(
+        default="", description="Human-readable model name (e.g., 'Opus 4.5')"
+    )
 
 
 class WorkspaceInfo(InputModel):
@@ -38,10 +42,16 @@ class CostInfo(InputModel):
     name: ClassVar[str] = "cost"
 
     total_cost_usd: float = Field(default=0.0, description="Total session cost in USD")
-    total_duration_ms: int = Field(default=0, description="Total session duration in milliseconds")
-    total_api_duration_ms: int = Field(default=0, description="Total API call duration in milliseconds")
+    total_duration_ms: int = Field(
+        default=0, description="Total session duration in milliseconds"
+    )
+    total_api_duration_ms: int = Field(
+        default=0, description="Total API call duration in milliseconds"
+    )
     total_lines_added: int = Field(default=0, description="Total lines of code added")
-    total_lines_removed: int = Field(default=0, description="Total lines of code removed")
+    total_lines_removed: int = Field(
+        default=0, description="Total lines of code removed"
+    )
 
 
 class ContextWindowInfo(InputModel):
@@ -50,10 +60,18 @@ class ContextWindowInfo(InputModel):
     name: ClassVar[str] = "context"
 
     total_input_tokens: int = Field(default=0, description="Total input tokens used")
-    total_output_tokens: int = Field(default=0, description="Total output tokens generated")
-    context_window_size: int = Field(default=200000, description="Maximum context window size")
-    used_percentage: float = Field(default=0.0, description="Percentage of context window used")
-    remaining_percentage: float = Field(default=100.0, description="Percentage of context window remaining")
+    total_output_tokens: int = Field(
+        default=0, description="Total output tokens generated"
+    )
+    context_window_size: int = Field(
+        default=200000, description="Maximum context window size"
+    )
+    used_percentage: float = Field(
+        default=0.0, description="Percentage of context window used"
+    )
+    remaining_percentage: float = Field(
+        default=100.0, description="Percentage of context window remaining"
+    )
 
 
 class GitInfo(InputModel):
@@ -61,13 +79,21 @@ class GitInfo(InputModel):
 
     name: ClassVar[str] = "git"
 
-    branch: str = Field(default="", description="Current branch name (or commit hash if detached)")
+    branch: str = Field(
+        default="", description="Current branch name (or commit hash if detached)"
+    )
     oid: str = Field(default="", description="Short commit hash (first 7 characters)")
-    upstream: str = Field(default="", description="Upstream branch name (e.g., 'origin/main')")
+    upstream: str = Field(
+        default="", description="Upstream branch name (e.g., 'origin/main')"
+    )
     ahead: int = Field(default=0, description="Number of commits ahead of upstream")
     behind: int = Field(default=0, description="Number of commits behind upstream")
-    dirty: bool = Field(default=False, description="True if there are uncommitted changes")
-    dirty_indicator: str = Field(default="", description="'*' if dirty, empty otherwise")
+    dirty: bool = Field(
+        default=False, description="True if there are uncommitted changes"
+    )
+    dirty_indicator: str = Field(
+        default="", description="'*' if dirty, empty otherwise"
+    )
     ahead_behind: str = Field(default="", description="Formatted string (e.g., '↑2↓1')")
 
 

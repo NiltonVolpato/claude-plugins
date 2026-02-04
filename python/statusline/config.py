@@ -19,6 +19,7 @@ class ModuleConfig(BaseModel):
 
     type: str | None = None  # Module type to use (defaults to config key)
     color: str = ""
+    expand: bool = False  # Whether the module expands to fill available width
     format: str = ""  # Default format string with Rich markup
     theme: str | None = None  # Per-module theme override
     themes: dict[str, ThemeVars] = Field(default_factory=dict)

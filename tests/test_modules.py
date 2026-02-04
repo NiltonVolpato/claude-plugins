@@ -1,5 +1,8 @@
 """Unit tests for statusline modules."""
 
+from rich.console import Console, ConsoleOptions, RenderableType
+from rich.table import Table
+
 from statusline.input import (
     ContextWindowInfo,
     CostInfo,
@@ -8,6 +11,7 @@ from statusline.input import (
     WorkspaceInfo,
 )
 from statusline.modules import get_all_modules, get_module
+from statusline.modules.bar import ExpandableBar
 
 
 class TestModelModule:
@@ -142,6 +146,87 @@ class TestBuildContext:
         assert fmt == ""
 
 
+class TestContextBarModule:
+    def test_render_with_progress_bar_returns_grid(self):
+        """context_bar with progress_bar() returns a grid renderable."""
+        module = get_module("context_bar")
+        assert module is not None
+        inputs = {"context": ContextWindowInfo(used_percentage=42.5)}
+        result = module.render(
+            inputs,
+            {"format": "{{ progress_bar(**theme.bar) }} {{ context.used_percentage | format_percent }}"},
+        )
+        assert isinstance(result, Table)
+
+    def test_render_without_progress_bar_returns_string(self):
+        """context_bar without progress_bar() in format returns a string."""
+        module = get_module("context_bar")
+        assert module is not None
+        inputs = {"context": ContextWindowInfo(used_percentage=42.5)}
+        result = module.render(
+            inputs,
+            {"format": "{{ context.used_percentage | format_percent }}"},
+        )
+        assert isinstance(result, str)
+        assert result == "42%"
+
+    def test_progress_bar_accepts_overrides(self):
+        """progress_bar() accepts inline overrides via kwargs."""
+        module = get_module("context_bar")
+        assert module is not None
+        inputs = {"context": ContextWindowInfo(used_percentage=50.0)}
+        result = module.render(
+            inputs,
+            {"format": "{{ progress_bar(full='#', empty='.', left='[', right=']') }}"},
+        )
+        assert isinstance(result, Table)
+
+    def test_render_no_context_returns_empty(self):
+        module = get_module("context_bar")
+        assert module is not None
+        result = module.render({}, {"format": "{{ progress_bar() }}"})
+        assert result == ""
+
+
+class TestExpandableBar:
+    def _make_console(self, width=80):
+        return Console(width=width, force_terminal=False, no_color=True)
+
+    def test_rich_measure_returns_fixed_width(self):
+        bar = ExpandableBar(50.0, {"width": 10, "left": "[", "right": "]"})
+        console = self._make_console()
+        options = console.options
+        measurement = bar.__rich_measure__(console, options)
+        assert measurement.minimum == 12  # 10 + len("[") + len("]")
+        assert measurement.maximum == 12
+
+    def test_rich_console_fills_max_width(self):
+        bar = ExpandableBar(50.0, {"width": 10, "left": "[", "right": "]"})
+        console = self._make_console(width=40)
+        options = console.options.update_width(40)
+        segments = list(bar.__rich_console__(console, options))
+        # Should produce a Text object whose length matches max_width
+        text = segments[0]
+        assert len(text) == 40  # [  + 38 bar chars
+
+    def test_percentage_clamped(self):
+        bar_low = ExpandableBar(-10.0)
+        assert bar_low.percentage == 0.0
+        bar_high = ExpandableBar(150.0)
+        assert bar_high.percentage == 100.0
+
+    def test_custom_chars(self):
+        bar = ExpandableBar(50.0, {"full": "#", "empty": ".", "left": "<", "right": ">"})
+        console = self._make_console(width=12)
+        options = console.options.update_width(12)
+        segments = list(bar.__rich_console__(console, options))
+        text_str = segments[0].plain
+        assert text_str.startswith("<")
+        assert text_str.endswith(">")
+        assert "#" in text_str
+        assert "." in text_str
+
+
 class TestModuleRegistry:
     def test_get_all_modules(self):
         modules = get_all_modules()
@@ -149,6 +234,7 @@ class TestModuleRegistry:
         assert "workspace" in modules
         assert "cost" in modules
         assert "context" in modules
+        assert "context_bar" in modules
         assert "version" in modules
         assert "git" in modules
 

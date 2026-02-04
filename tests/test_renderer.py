@@ -4,6 +4,7 @@ from pathlib import Path
 
 from statusline.config import Config, ModuleConfig, load_config
 from statusline.input import (
+    ContextWindowInfo,
     ModelInfo,
     StatuslineInput,
     WorkspaceInfo,
@@ -15,6 +16,7 @@ def make_input(
     model: ModelInfo | None = None,
     workspace: WorkspaceInfo | None = None,
     version: str = "1.2.3",
+    context_window: ContextWindowInfo | None = None,
 ) -> StatuslineInput:
     """Create a StatuslineInput with custom values."""
     return StatuslineInput(
@@ -25,6 +27,7 @@ def make_input(
             project_dir="/home/user/my-project",
         ),
         version=version,
+        context_window=context_window or ContextWindowInfo(),
     )
 
 
@@ -286,3 +289,68 @@ class TestRendererMultiRow:
         assert "Test Model" in lines[0]
         assert "my-project" in lines[0]
         assert "v1.2.3" in lines[1]
+
+
+class TestRendererExpand:
+    def test_expandable_module_fills_width(self):
+        """An expand=true module causes the row to fill available width."""
+        input_data = make_input(
+            context_window=ContextWindowInfo(used_percentage=50.0),
+        )
+        config = make_config(
+            enabled=["context_bar"],
+            theme="ascii",
+            color=False,
+            width=60,
+        )
+        config = config.model_copy(
+            update={
+                "modules": {
+                    **config.modules,
+                    "context_bar": config.modules["context_bar"].model_copy(
+                        update={"expand": True}
+                    ),
+                }
+            }
+        )
+        result = render_statusline(input_data, config)
+        assert len(result) == 60
+
+    def test_mixed_expand_and_fixed_modules(self):
+        """Expandable and fixed modules in same row."""
+        input_data = make_input(
+            context_window=ContextWindowInfo(used_percentage=50.0),
+        )
+        config = make_config(
+            enabled=["model", "context_bar"],
+            theme="minimal",
+            color=False,
+            width=80,
+        )
+        config = config.model_copy(
+            update={
+                "modules": {
+                    **config.modules,
+                    "context_bar": config.modules["context_bar"].model_copy(
+                        update={"expand": True}
+                    ),
+                }
+            }
+        )
+        result = render_statusline(input_data, config)
+        assert "Test Model" in result
+        assert len(result) == 80
+
+    def test_left_right_no_expand_gets_spacer(self):
+        """Left/right with no expand still pads to full width."""
+        input_data = make_input()
+        config = make_config(
+            enabled={"left": ["model"], "right": ["workspace"]},
+            theme="minimal",
+            color=False,
+            width=80,
+        )
+        result = render_statusline(input_data, config)
+        assert "Test Model" in result
+        assert "my-project" in result
+        assert len(result) == 80

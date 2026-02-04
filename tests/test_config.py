@@ -35,6 +35,14 @@ class TestModuleConfig:
         config = ModuleConfig(type="context")
         assert config.type == "context"
 
+    def test_expand_defaults_to_false(self):
+        config = ModuleConfig()
+        assert config.expand is False
+
+    def test_expand_set_to_true(self):
+        config = ModuleConfig(expand=True)
+        assert config.expand is True
+
 
 class TestConfig:
     def test_default_values(self):
