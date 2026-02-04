@@ -10,6 +10,7 @@ from typing import Annotated
 import typer
 from rich import markup, table
 from rich.console import Console
+from rich.tree import Tree
 
 from statusline.config import (
     CONFIG_PATH,
@@ -20,6 +21,16 @@ from statusline.config import (
 from statusline.input import get_sample_input, parse_input
 from statusline.modules import get_module
 from statusline.renderer import render_statusline
+
+try:
+    from tomli_w import _writer
+
+    def format_string(s):
+        return _writer.format_string(s, allow_multiline=True)
+except ImportError:
+
+    def format_string(s):
+        return repr(s)
 
 
 class Context(typer.Context):
@@ -43,7 +54,7 @@ class Env:
 
 @app.callback()
 def main(ctx: Context, force_terminal: bool | None = None):
-    ctx.obj = Env(console=Console(force_terminal=force_terminal))
+    ctx.obj = Env(console=Console(force_terminal=force_terminal, highlight=True))
 
 
 def parse_modules(modules_str: str) -> list[str]:
@@ -215,21 +226,21 @@ def module_info(
     module_config = config.modules.get(name)
     if module_config:
         module_type = module_config.type
-        module_format = markup.escape(module_config.format)
+        module_format = markup.escape(format_string(module_config.format))
     else:
         module_type = name
         module_format = None
 
     module = get_module(module_type or name)
     if module is None:
-        typer.secho(f"Module [b]{name} unknown")
+        typer.secho(f"Module [bold]{name}[/] unknown")
         raise typer.Exit(code=2)
 
     t.add_row("Name", name)
     if module_type is not None:
         t.add_row("Type", module_type)
     if module.__doc__:
-        t.add_row("Doc", module.__doc__)
+        t.add_row("Description", module.__doc__)
     if module_format is not None:
         t.add_row("Format", module_format)
 
@@ -242,33 +253,35 @@ def module_info(
     console.print(t)
     console.print()
 
-    console.print("[bold]Template variables:[/]")
-    t = table.Table(
-        table.Column(style="green", justify="right"),
-        table.Column(),
-        show_header=False,
-        box=None,
-    )
+    tree = Tree("[bold]Template variables[/]")
 
     # Inputs section — iterate __inputs__
     for input_cls in module.__inputs__:
         input_name = input_cls.name
         input_doc = input_cls.__doc__ or ""
-        t.add_row(f"[bold]{input_name}[/]", f"[dim]({input_doc.strip()})[/]")
+        branch = tree.add(f"[green]{input_name}[/] [dim]({input_doc.strip()})[/]")
         for field_name, field_info in input_cls.model_fields.items():
             desc = field_info.description or ""
-            t.add_row(f"{input_name}.{field_name}", desc)
+            branch.add(f"[bold red].[/][green]{field_name}[/] [dim]{desc}[/]")
 
     # Theme section — show theme vars from config
-    t.add_row("[bold]theme[/]", "[dim](from configuration)[/]")
+    def add_vars(branch: Tree, data: dict) -> None:
+        for key, val in data.items():
+            if isinstance(val, dict):
+                child = branch.add(f"[bold red].[/][green]{key}[/]")
+                add_vars(child, val)
+            else:
+                branch.add(
+                    f"[bold red].[/][green]{key}[/] {markup.escape(format_string(val))}"
+                )
+
     if module_config:
         for theme_name, theme_vars in sorted(module_config.themes.items()):
-            t.add_row(f"[dim]{theme_name}[/]", "")
+            theme_branch = tree.add(f"[green]theme[/] [dim].{theme_name}[/]")
             if isinstance(theme_vars, dict):
-                for key, val in theme_vars.items():
-                    t.add_row(f"theme.{key}", markup.escape(repr(val)))
+                add_vars(theme_branch, theme_vars)
 
-    console.print(t)
+    console.print(tree)
 
 
 @app.command()
