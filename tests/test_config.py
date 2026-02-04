@@ -6,8 +6,10 @@ from pathlib import Path
 from statusline.config import (
     Config,
     ModuleConfig,
+    RowLayout,
     generate_default_config_toml,
     load_config,
+    normalize_enabled,
 )
 
 
@@ -159,6 +161,106 @@ color = false
             assert config.theme == "nerd"
 
 
+class TestNormalizeEnabled:
+    def test_flat_list(self):
+        """Simple list → 1 row, left-only."""
+        layout = normalize_enabled(["a", "b", "c"])
+        assert len(layout.rows) == 1
+        assert layout.rows[0].left == ["a", "b", "c"]
+        assert layout.rows[0].right == []
+
+    def test_dict_left_right(self):
+        """Dict with left/right → 1 row with both sides."""
+        layout = normalize_enabled({"left": ["a", "b"], "right": ["c"]})
+        assert len(layout.rows) == 1
+        assert layout.rows[0].left == ["a", "b"]
+        assert layout.rows[0].right == ["c"]
+
+    def test_dict_left_only(self):
+        """Dict with only left → 1 row, left-only."""
+        layout = normalize_enabled({"left": ["a", "b"]})
+        assert len(layout.rows) == 1
+        assert layout.rows[0].left == ["a", "b"]
+        assert layout.rows[0].right == []
+
+    def test_dict_right_only(self):
+        """Dict with only right → 1 row, right-only."""
+        layout = normalize_enabled({"right": ["c"]})
+        assert len(layout.rows) == 1
+        assert layout.rows[0].left == []
+        assert layout.rows[0].right == ["c"]
+
+    def test_numeric_keys_list_values(self):
+        """Dict with numeric keys and list values → multi-row, left-only."""
+        layout = normalize_enabled({"0": ["a", "b"], "1": ["c"]})
+        assert len(layout.rows) == 2
+        assert layout.rows[0].left == ["a", "b"]
+        assert layout.rows[0].right == []
+        assert layout.rows[1].left == ["c"]
+        assert layout.rows[1].right == []
+
+    def test_numeric_keys_dict_values(self):
+        """Dict with numeric keys and dict values → multi-row with alignment."""
+        layout = normalize_enabled({
+            "0": {"left": ["a"], "right": ["b"]},
+            "1": {"left": ["c"], "right": ["d"]},
+        })
+        assert len(layout.rows) == 2
+        assert layout.rows[0] == RowLayout(left=["a"], right=["b"])
+        assert layout.rows[1] == RowLayout(left=["c"], right=["d"])
+
+    def test_numeric_keys_sorted(self):
+        """Numeric keys are sorted numerically."""
+        layout = normalize_enabled({"2": ["c"], "0": ["a"], "1": ["b"]})
+        assert len(layout.rows) == 3
+        assert layout.rows[0].left == ["a"]
+        assert layout.rows[1].left == ["b"]
+        assert layout.rows[2].left == ["c"]
+
+    def test_empty_list(self):
+        """Empty list → 1 row with empty left."""
+        layout = normalize_enabled([])
+        assert len(layout.rows) == 1
+        assert layout.rows[0].left == []
+
+    def test_mixed_numeric_list_and_dict(self):
+        """Mix of list and dict values under numeric keys."""
+        layout = normalize_enabled({
+            "0": ["a", "b"],
+            "1": {"left": ["c"], "right": ["d"]},
+        })
+        assert len(layout.rows) == 2
+        assert layout.rows[0].left == ["a", "b"]
+        assert layout.rows[0].right == []
+        assert layout.rows[1].left == ["c"]
+        assert layout.rows[1].right == ["d"]
+
+
+class TestConfigLayout:
+    def test_layout_from_list(self):
+        """Config.layout normalizes a list enabled field."""
+        config = Config(enabled=["model", "workspace"])
+        layout = config.layout
+        assert len(layout.rows) == 1
+        assert layout.rows[0].left == ["model", "workspace"]
+
+    def test_layout_from_dict(self):
+        """Config.layout normalizes a dict enabled field."""
+        config = Config(enabled={"left": ["model"], "right": ["context"]})
+        layout = config.layout
+        assert len(layout.rows) == 1
+        assert layout.rows[0].left == ["model"]
+        assert layout.rows[0].right == ["context"]
+
+    def test_width_default_none(self):
+        config = Config()
+        assert config.width is None
+
+    def test_width_override(self):
+        config = Config(width=120)
+        assert config.width == 120
+
+
 class TestGenerateDefaultConfigToml:
     def test_generates_valid_toml(self):
         toml_content = generate_default_config_toml()
@@ -166,3 +268,8 @@ class TestGenerateDefaultConfigToml:
         assert "color = " in toml_content
         assert "enabled = " in toml_content
         assert "separator = " in toml_content
+
+    def test_includes_layout_examples(self):
+        toml_content = generate_default_config_toml()
+        assert "enabled.left" in toml_content
+        assert "enabled.right" in toml_content

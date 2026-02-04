@@ -24,14 +24,71 @@ class ModuleConfig(BaseModel):
     themes: dict[str, ThemeVars] = Field(default_factory=dict)
 
 
+class RowLayout(BaseModel):
+    """Layout for a single row with optional left/right alignment."""
+
+    left: list[str] = Field(default_factory=list)
+    right: list[str] = Field(default_factory=list)
+
+
+class StatuslineLayout(BaseModel):
+    """Normalized layout with one or more rows."""
+
+    rows: list[RowLayout]
+
+
+def normalize_enabled(enabled: list[str] | dict[str, Any]) -> StatuslineLayout:
+    """Convert raw TOML `enabled` value into a StatuslineLayout.
+
+    Supported shapes:
+    - list[str]                          → 1 row, left=list
+    - dict with left/right keys          → 1 row with both sides
+    - dict with numeric string keys      → multi-row (sorted by key)
+      each value can be list (left-only) or dict with left/right
+    """
+    if isinstance(enabled, list):
+        return StatuslineLayout(rows=[RowLayout(left=enabled)])
+
+    if isinstance(enabled, dict):
+        # Single row with left/right keys
+        if "left" in enabled or "right" in enabled:
+            return StatuslineLayout(rows=[RowLayout(
+                left=enabled.get("left", []),
+                right=enabled.get("right", []),
+            )])
+
+        # Multi-row with numeric string keys
+        rows: list[RowLayout] = []
+        for key in sorted(enabled.keys(), key=int):
+            value = enabled[key]
+            if isinstance(value, list):
+                rows.append(RowLayout(left=value))
+            elif isinstance(value, dict):
+                rows.append(RowLayout(
+                    left=value.get("left", []),
+                    right=value.get("right", []),
+                ))
+        return StatuslineLayout(rows=rows)
+
+    return StatuslineLayout(rows=[])
+
+
 class Config(BaseModel):
     """Global statusline configuration."""
 
     theme: str = "nerd"
     color: bool = True
-    enabled: list[str] = Field(default_factory=lambda: ["model", "workspace"])
+    enabled: list[str] | dict[str, Any] = Field(
+        default_factory=lambda: ["model", "workspace"]
+    )
     separator: str = " | "
+    width: int | None = None
     modules: dict[str, ModuleConfig] = Field(default_factory=dict)
+
+    @property
+    def layout(self) -> StatuslineLayout:
+        """Get the normalized layout from the enabled field."""
+        return normalize_enabled(self.enabled)
 
     def get_module_config(self, alias: str) -> ModuleConfig:
         """Get configuration for a module alias."""
@@ -138,6 +195,25 @@ def generate_default_config_toml() -> str:
 # color = true
 # enabled = ["model", "workspace", "context"]
 # separator = " | "
+# width = 120         # Terminal width override (auto-detected by default)
+
+# Layout options — `enabled` supports several formats:
+#
+# Simple list (default):
+# enabled = ["model", "workspace", "context"]
+#
+# Left/right alignment:
+# enabled.left = ["model", "workspace"]
+# enabled.right = ["context"]
+#
+# Multi-line:
+# enabled.0 = ["model", "workspace"]
+# enabled.1 = ["context"]
+#
+# Combined multi-line with alignment:
+# [enabled.0]
+# left = ["model", "workspace"]
+# right = ["context"]
 
 # Per-module overrides (uncomment to customize)
 # [modules.model]

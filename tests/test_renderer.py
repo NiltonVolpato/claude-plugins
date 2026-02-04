@@ -209,3 +209,80 @@ class TestRendererWithAliases:
         result = render_statusline(input_data, config)
         assert "Test Model" in result
         assert "my-project" in result
+
+
+class TestRendererLeftRight:
+    def test_left_right_alignment(self):
+        """Left/right modules are rendered on same row with space between."""
+        input_data = make_input()
+        config = make_config(
+            enabled={"left": ["model"], "right": ["workspace"]},
+            theme="minimal",
+            color=False,
+            width=80,
+        )
+        result = render_statusline(input_data, config)
+        assert "Test Model" in result
+        assert "my-project" in result
+        # Right-aligned text should be padded with spaces
+        assert len(result) == 80
+
+    def test_left_only_dict(self):
+        """Dict with only left key works like flat list."""
+        input_data = make_input()
+        config = make_config(
+            enabled={"left": ["model", "workspace"]},
+            theme="minimal",
+            color=False,
+        )
+        result = render_statusline(input_data, config)
+        assert "Test Model" in result
+        assert "my-project" in result
+
+    def test_right_only(self):
+        """Dict with only right key renders right-aligned."""
+        input_data = make_input()
+        config = make_config(
+            enabled={"right": ["model"]},
+            theme="minimal",
+            color=False,
+            width=80,
+        )
+        result = render_statusline(input_data, config)
+        assert "Test Model" in result
+        assert len(result) == 80
+
+
+class TestRendererMultiRow:
+    def test_multi_row_left_only(self):
+        """Multiple rows, all left-only, joined by newline."""
+        input_data = make_input()
+        config = make_config(
+            enabled={"0": ["model"], "1": ["workspace"]},
+            theme="minimal",
+            color=False,
+        )
+        result = render_statusline(input_data, config)
+        lines = result.split("\n")
+        assert len(lines) == 2
+        assert "Test Model" in lines[0]
+        assert "my-project" in lines[1]
+
+    def test_multi_row_with_alignment(self):
+        """Multiple rows with left/right alignment."""
+        input_data = make_input()
+        config = make_config(
+            enabled={
+                "0": {"left": ["model"], "right": ["workspace"]},
+                "1": {"left": ["version"]},
+            },
+            theme="minimal",
+            color=False,
+            width=80,
+        )
+        result = render_statusline(input_data, config)
+        lines = result.split("\n")
+        assert len(lines) == 2
+        assert "Test Model" in lines[0]
+        assert "my-project" in lines[0]
+        assert "v1.2.3" in lines[1]

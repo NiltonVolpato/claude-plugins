@@ -68,6 +68,7 @@ def merge_cli_options(
     separator: str | None,
     theme: str | None,
     color: bool,
+    width: int | None = None,
 ) -> Config:
     """Merge CLI options into config, with CLI taking precedence."""
     return Config(
@@ -75,6 +76,7 @@ def merge_cli_options(
         color=color,
         enabled=parse_modules(modules) if modules else config.enabled,
         separator=separator if separator is not None else config.separator,
+        width=width if width is not None else config.width,
         modules=config.modules,
     )
 
@@ -106,6 +108,14 @@ def render(
             help="Theme: nerd, ascii, emoji, or minimal.",
         ),
     ] = None,
+    width: Annotated[
+        int | None,
+        typer.Option(
+            "--width",
+            "-w",
+            help="Terminal width override for layout.",
+        ),
+    ] = None,
     color: Annotated[
         bool,
         typer.Option(
@@ -124,7 +134,7 @@ def render(
 ) -> None:
     """Render the status line (reads JSON from stdin)."""
     config = load_config(config_path)
-    config = merge_cli_options(config, modules, separator, theme, color)
+    config = merge_cli_options(config, modules, separator, theme, color, width)
     if ctx.command.name == "render":
         if sys.stdin.isatty():
             typer.echo(
