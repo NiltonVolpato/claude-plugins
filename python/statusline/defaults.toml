@@ -41,12 +41,13 @@ themes.minimal.label = ""
 [modules.context_bar]
 format = "{{ progress_bar(**theme.bar) }} {{ context.used_percentage | format_percent }}"
 
-[modules.context_bar.themes.nerd]
-format = "{{ progress_bar(full='\uee04', empty='\uee01', **theme.bar) }} {{ context.used_percentage | format_percent }}"
-
 [modules.context_bar.themes.nerd.bar]
-left = "\uee03"
-right = "\uee02"
+full_left = "\uee03"
+full = "\uee04"
+full_right = "\uee05"
+empty_left = "\uee00"
+empty = "\uee01"
+empty_right = "\uee02"
 
 [modules.context_bar.themes.ascii.bar]
 left = "["

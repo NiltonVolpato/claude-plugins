@@ -16,16 +16,22 @@ class ExpandableBar:
         opts = bar_opts or {}
         self.full_char = str(opts.get("full", "█"))
         self.empty_char = str(opts.get("empty", " "))
-        self.left_cap = str(opts.get("left", "["))
-        self.right_cap = str(opts.get("right", "]"))
+        left = str(opts.get("left", "["))
+        right = str(opts.get("right", "]"))
+        self.full_left = str(opts.get("full_left", left))
+        self.empty_left = str(opts.get("empty_left", left))
+        self.full_right = str(opts.get("full_right", right))
+        self.empty_right = str(opts.get("empty_right", right))
         self.width = int(opts.get("width", 10))
 
     def __rich_console__(self, console, options):
         width = options.max_width
-        bar_width = max(0, width - len(self.left_cap) - len(self.right_cap))
+        bar_width = max(0, width - len(self.full_left) - len(self.full_right))
         ratio = self.percentage / 100
         n = int(bar_width * ratio)
 
+        left_cap = self.full_left if n > 0 else self.empty_left
+        right_cap = self.full_right if n == bar_width else self.empty_right
         segments = self.full_char * n + self.empty_char * (bar_width - n)
 
         # RGB: green (0%) → red (100%)
@@ -34,9 +40,9 @@ class ExpandableBar:
         color = Color.from_rgb(r, g, 0)
 
         text = Text()
-        text.append(self.left_cap + segments + self.right_cap, style=Style(color=color))
+        text.append(left_cap + segments + right_cap, style=Style(color=color))
         yield text
 
     def __rich_measure__(self, console, options):
-        total = self.width + len(self.left_cap) + len(self.right_cap)
+        total = self.width + len(self.full_left) + len(self.full_right)
         return Measurement(total, total)

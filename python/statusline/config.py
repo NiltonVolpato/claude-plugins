@@ -53,10 +53,14 @@ def normalize_enabled(enabled: list[str] | dict[str, Any]) -> StatuslineLayout:
     if isinstance(enabled, dict):
         # Single row with left/right keys
         if "left" in enabled or "right" in enabled:
-            return StatuslineLayout(rows=[RowLayout(
-                left=enabled.get("left", []),
-                right=enabled.get("right", []),
-            )])
+            return StatuslineLayout(
+                rows=[
+                    RowLayout(
+                        left=enabled.get("left", []),
+                        right=enabled.get("right", []),
+                    )
+                ]
+            )
 
         # Multi-row with numeric string keys
         rows: list[RowLayout] = []
@@ -65,10 +69,12 @@ def normalize_enabled(enabled: list[str] | dict[str, Any]) -> StatuslineLayout:
             if isinstance(value, list):
                 rows.append(RowLayout(left=value))
             elif isinstance(value, dict):
-                rows.append(RowLayout(
-                    left=value.get("left", []),
-                    right=value.get("right", []),
-                ))
+                rows.append(
+                    RowLayout(
+                        left=value.get("left", []),
+                        right=value.get("right", []),
+                    )
+                )
         return StatuslineLayout(rows=rows)
 
     return StatuslineLayout(rows=[])
@@ -164,10 +170,7 @@ def _load_user_config(path: Path | None = None) -> dict[str, Any]:
     config_path = path or CONFIG_PATH
     if not config_path.exists():
         return {}
-    try:
-        return tomllib.loads(config_path.read_text())
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
+    return tomllib.loads(config_path.read_text())
 
 
 def load_config(path: Path | None = None) -> Config:
