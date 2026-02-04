@@ -138,12 +138,15 @@ class TestBuildContext:
         assert context["model"] is model_info
         assert context["theme"] is theme_vars
 
-    def test_build_context_empty_format(self):
+    def test_build_context_empty_format_raises(self):
         module = get_module("model")
         assert module is not None
         inputs = {"model": ModelInfo()}
-        fmt, context = module.build_context(inputs, {})
-        assert fmt == ""
+        try:
+            module.build_context(inputs, {})
+            assert False, "Expected ValueError"
+        except ValueError as e:
+            assert "no format template" in str(e)
 
 
 class TestContextBarModule:

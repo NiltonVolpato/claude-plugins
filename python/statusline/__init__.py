@@ -44,8 +44,9 @@ app = typer.Typer(
 
 
 class Env:
-    __slots__ = ("console",)
+    __slots__ = ("console", "config_path")
     console: Console
+    config_path: Path | None
 
     def __init__(self, **fields):
         for name, value in fields.items():
@@ -53,8 +54,22 @@ class Env:
 
 
 @app.callback()
-def main(ctx: Context, force_terminal: bool | None = None):
-    ctx.obj = Env(console=Console(force_terminal=force_terminal, highlight=True))
+def app_main(
+    ctx: Context,
+    force_terminal: bool | None = None,
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to config file (use /dev/null to skip user config).",
+        ),
+    ] = None,
+):
+    ctx.obj = Env(
+        console=Console(force_terminal=force_terminal, highlight=True),
+        config_path=config_path,
+    )
 
 
 def parse_modules(modules_str: str) -> list[str]:
@@ -123,17 +138,9 @@ def render(
             help="Enable or disable colors.",
         ),
     ] = True,
-    config_path: Annotated[
-        Path | None,
-        typer.Option(
-            "--config",
-            "-c",
-            help="Path to config file (use /dev/null to skip user config).",
-        ),
-    ] = None,
 ) -> None:
     """Render the status line (reads JSON from stdin)."""
-    config = load_config(config_path)
+    config = load_config(ctx.obj.config_path)
     config = merge_cli_options(config, modules, separator, theme, color, width)
     if ctx.command.name == "render":
         if sys.stdin.isatty():
@@ -193,7 +200,7 @@ app.add_typer(module_app, name="module", help="Manage modules.")
 def module_ls(ctx: Context) -> None:
     """List all module types and configured aliases."""
     console = ctx.obj.console
-    config = load_config()
+    config = load_config(ctx.obj.config_path)
 
     t = table.Table(
         table.Column("Module Name", justify="left", style="blue"),
@@ -224,7 +231,7 @@ def module_info(
 ) -> None:
     """Show details about a module or alias."""
     console = ctx.obj.console
-    config = load_config()
+    config = load_config(ctx.obj.config_path)
 
     t = table.Table(
         table.Column(justify="right", style="bold"),
@@ -334,6 +341,13 @@ def config(
         typer.echo("Run 'statusline config --init' to create one.")
 
 
-# def main() -> None:
-#     """Entry point for the CLI."""
-#     app()
+def main() -> None:
+    """Entry point for the CLI."""
+    from statusline.errors import StatuslineError, report_error
+
+    try:
+        app()
+    except StatuslineError:
+        raise
+    except Exception as exc:
+        report_error("unexpected error", exc)

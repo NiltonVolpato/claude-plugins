@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from statusline.errors import report_error
+
 type ThemeVars = dict[str, str | int | ThemeVars]
 
 CONFIG_PATH = Path.home() / ".claude" / "statusline.toml"
@@ -47,37 +49,40 @@ def normalize_enabled(enabled: list[str] | dict[str, Any]) -> StatuslineLayout:
     - dict with numeric string keys      → multi-row (sorted by key)
       each value can be list (left-only) or dict with left/right
     """
-    if isinstance(enabled, list):
-        return StatuslineLayout(rows=[RowLayout(left=enabled)])
+    try:
+        if isinstance(enabled, list):
+            return StatuslineLayout(rows=[RowLayout(left=enabled)])
 
-    if isinstance(enabled, dict):
-        # Single row with left/right keys
-        if "left" in enabled or "right" in enabled:
-            return StatuslineLayout(
-                rows=[
-                    RowLayout(
-                        left=enabled.get("left", []),
-                        right=enabled.get("right", []),
-                    )
-                ]
-            )
-
-        # Multi-row with numeric string keys
-        rows: list[RowLayout] = []
-        for key in sorted(enabled.keys(), key=int):
-            value = enabled[key]
-            if isinstance(value, list):
-                rows.append(RowLayout(left=value))
-            elif isinstance(value, dict):
-                rows.append(
-                    RowLayout(
-                        left=value.get("left", []),
-                        right=value.get("right", []),
-                    )
+        if isinstance(enabled, dict):
+            # Single row with left/right keys
+            if "left" in enabled or "right" in enabled:
+                return StatuslineLayout(
+                    rows=[
+                        RowLayout(
+                            left=enabled.get("left", []),
+                            right=enabled.get("right", []),
+                        )
+                    ]
                 )
-        return StatuslineLayout(rows=rows)
 
-    return StatuslineLayout(rows=[])
+            # Multi-row with numeric string keys
+            rows: list[RowLayout] = []
+            for key in sorted(enabled.keys(), key=int):
+                value = enabled[key]
+                if isinstance(value, list):
+                    rows.append(RowLayout(left=value))
+                elif isinstance(value, dict):
+                    rows.append(
+                        RowLayout(
+                            left=value.get("left", []),
+                            right=value.get("right", []),
+                        )
+                    )
+            return StatuslineLayout(rows=rows)
+
+        return StatuslineLayout(rows=[])
+    except Exception as exc:
+        report_error("parsing 'enabled' layout config", exc)
 
 
 class Config(BaseModel):
@@ -112,23 +117,34 @@ class Config(BaseModel):
             return module_config.type
         return alias
 
-    def get_theme_vars(self, module_name: str) -> ThemeVars:
-        """Get the resolved theme variables for a module.
+    def get_theme_vars(self, alias: str) -> ThemeVars:
+        """Get the resolved theme variables for a module alias.
 
-        Merges module-level format with theme-specific variables.
-        Theme vars can override the format.
+        When an alias references a different module type via `type`, the base
+        module type's theme vars are resolved first, then the alias's own
+        config is layered on top (deep-merged).
         """
-        module_config = self.get_module_config(module_name)
+        module_config = self.get_module_config(alias)
         theme_name = module_config.theme or self.theme
+        module_type = self.get_module_type(alias)
 
-        # Start with module-level format
+        # Start with base module type's vars if alias differs from type
         result: ThemeVars = {}
+        if module_type != alias:
+            base_config = self.get_module_config(module_type)
+            base_theme = base_config.theme or self.theme
+            if base_config.format:
+                result["format"] = base_config.format
+            base_theme_vars = base_config.themes.get(base_theme, {})
+            result = _deep_merge(result, base_theme_vars)
+
+        # Layer alias's own module-level format
         if module_config.format:
             result["format"] = module_config.format
 
-        # Theme vars override (including format if specified)
+        # Layer alias's theme vars (deep-merged)
         theme_vars = module_config.themes.get(theme_name, {})
-        result.update(theme_vars)
+        result = _deep_merge(result, theme_vars)
 
         return result
 
@@ -152,17 +168,19 @@ def _parse_config(data: dict[str, Any]) -> Config:
     """Parse configuration from TOML data."""
     try:
         return Config.model_validate(data)
-    except Exception:
-        # Fall back to defaults on validation error
-        return Config()
+    except Exception as exc:
+        report_error("validating config", exc)
 
 
 def _load_defaults() -> dict[str, Any]:
     """Load default configuration from bundled defaults.toml."""
-    files = importlib.resources.files("statusline")
-    defaults_path = files.joinpath("defaults.toml")
-    content = defaults_path.read_text()
-    return tomllib.loads(content)
+    try:
+        files = importlib.resources.files("statusline")
+        defaults_path = files.joinpath("defaults.toml")
+        content = defaults_path.read_text()
+        return tomllib.loads(content)
+    except Exception as exc:
+        report_error("loading bundled defaults.toml", exc)
 
 
 def _load_user_config(path: Path | None = None) -> dict[str, Any]:
@@ -170,7 +188,10 @@ def _load_user_config(path: Path | None = None) -> dict[str, Any]:
     config_path = path or CONFIG_PATH
     if not config_path.exists():
         return {}
-    return tomllib.loads(config_path.read_text())
+    try:
+        return tomllib.loads(config_path.read_text())
+    except Exception as exc:
+        report_error(f"parsing config file '{config_path}'", exc)
 
 
 def load_config(path: Path | None = None) -> Config:

@@ -6,6 +6,7 @@ from rich.console import RenderableType
 from rich.table import Table
 
 from statusline.config import Config
+from statusline.errors import report_error
 from statusline.input import StatuslineInput
 from statusline.modules import get_module
 from statusline.providers import InputResolver
@@ -27,7 +28,10 @@ def render_items(
             continue
         inputs = resolver.resolve_for_module(module.__inputs__)
         theme_vars = config.get_theme_vars(alias)
-        rendered = module.render(inputs, theme_vars)
+        try:
+            rendered = module.render(inputs, theme_vars)
+        except Exception as exc:
+            report_error(f"rendering module '{alias}'", exc)
         if rendered:
             expand = config.get_module_config(alias).expand
             items.append((rendered, expand))

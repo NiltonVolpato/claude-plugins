@@ -18,6 +18,4 @@ class ModelModule(Module):
     def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> str:
         """Render the model display name."""
         fmt, context = self.build_context(inputs, theme_vars)
-        if not fmt:
-            return ""
         return render_template(fmt, context)

@@ -13,10 +13,11 @@ def run_statusline(*args: str, stdin: str | None = None, use_user_config: bool =
         stdin: Input to pass via stdin
         use_user_config: If False (default), uses --config=/dev/null for hermeticity
     """
-    cmd = [sys.executable, "-m", "statusline", *args]
-    # Add --config=/dev/null for hermetic tests (only for render/preview commands)
-    if not use_user_config and args and args[0] in ("render", "preview"):
-        cmd.append("--config=/dev/null")
+    # Global --config must come before the subcommand
+    if use_user_config:
+        cmd = [sys.executable, "-m", "statusline", *args]
+    else:
+        cmd = [sys.executable, "-m", "statusline", "--config=/dev/null", *args]
     return subprocess.run(
         cmd,
         input=stdin,
@@ -141,3 +142,17 @@ class TestCLIConfig:
         assert result.returncode == 0
         # Should mention config file location
         assert "statusline.toml" in result.stdout
+
+    def test_invalid_toml_shows_friendly_error(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("this is not valid toml [[[")
+            f.flush()
+            result = run_statusline("--config", f.name, "preview", use_user_config=True)
+            Path(f.name).unlink()
+        assert result.returncode == 1
+        assert "statusline:" in result.stdout
+        assert "parsing config file" in result.stdout
+        assert "Run 'statusline preview'" in result.stdout

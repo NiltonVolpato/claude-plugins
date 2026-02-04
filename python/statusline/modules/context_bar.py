@@ -26,8 +26,6 @@ class ContextBarModule(Module):
             return ""
 
         fmt, ctx = self.build_context(inputs, theme_vars)
-        if not fmt:
-            return ""
 
         # Ensure theme.bar always exists as a dict
         bar_defaults = theme_vars.get("bar", {})

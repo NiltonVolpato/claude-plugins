@@ -22,6 +22,4 @@ class GitModule(Module):
             return ""
 
         fmt, context = self.build_context(inputs, theme_vars)
-        if not fmt:
-            return ""
         return render_template(fmt, context)

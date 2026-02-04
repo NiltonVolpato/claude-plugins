@@ -222,13 +222,15 @@ class TestRendererLeftRight:
             enabled={"left": ["model"], "right": ["workspace"]},
             theme="minimal",
             color=False,
-            width=80,
+            width=40,
         )
         result = render_statusline(input_data, config)
         assert "Test Model" in result
         assert "my-project" in result
+        print(repr(result))
+        assert result == "Test Model                    my-project"
         # Right-aligned text should be padded with spaces
-        assert len(result) == 80
+        assert len(result) == 40
 
     def test_left_only_dict(self):
         """Dict with only left key works like flat list."""

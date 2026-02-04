@@ -21,7 +21,7 @@ Homepage = "https://github.com/NiltonVolpato/claude-plugins/"
 Repository = "https://github.com/NiltonVolpato/claude-plugins.git"
 
 [project.scripts]
-statusline = "statusline:app"
+statusline = "statusline:main"
 
 [build-system]
 requires = ["uv_build>=0.9.18,<0.10.0"]

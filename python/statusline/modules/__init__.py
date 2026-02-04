@@ -38,8 +38,13 @@ class Module(ABC):
         Returns (format_string, context_dict).
         Inputs namespaced under their model's `name` ClassVar.
         Theme vars under 'theme'. No model_dump() — Jinja2 uses attribute access.
+
+        Raises:
+            ValueError: If no format template is configured.
         """
         fmt = theme_vars.get("format", "")
+        if not fmt:
+            raise ValueError(f"module '{self.name}' has no format template")
         assert isinstance(fmt, str)
         ctx: dict = {key: input for key, input in inputs.items()}
         ctx["theme"] = theme_vars

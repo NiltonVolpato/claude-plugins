@@ -160,13 +160,17 @@ color = false
             # Defaults should still be loaded for module configs
             assert "model" in config.modules
 
-    def test_invalid_toml_uses_defaults(self):
+    def test_invalid_toml_raises_error(self):
+        from statusline.errors import StatuslineError
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write("this is not valid toml [[[")
             f.flush()
-            config = load_config(Path(f.name))
-            # Should return default config on parse error
-            assert config.theme == "nerd"
+            try:
+                load_config(Path(f.name))
+                assert False, "Expected StatuslineError"
+            except StatuslineError:
+                pass  # Expected
 
 
 class TestNormalizeEnabled:
