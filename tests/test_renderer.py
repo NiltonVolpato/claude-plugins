@@ -2,7 +2,10 @@
 
 from pathlib import Path
 
+import pytest
+
 from statusline.config import Config, ModuleConfig, load_config
+from statusline.errors import StatuslineError
 from statusline.input import (
     ContextWindowInfo,
     ModelInfo,
@@ -72,15 +75,15 @@ class TestRenderer:
         result = render_statusline(input_data, config)
         assert result == ""
 
-    def test_render_unknown_module_skipped(self):
+    def test_render_unknown_module_raises(self):
         input_data = make_input()
         config = make_config(
             enabled=["model", "nonexistent", "workspace"],
             theme="minimal",
             color=False,
         )
-        result = render_statusline(input_data, config)
-        assert result == "Test Model | my-project"
+        with pytest.raises(StatuslineError):
+            render_statusline(input_data, config)
 
     def test_render_all_modules(self):
         input_data = make_input()

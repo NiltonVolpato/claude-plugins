@@ -25,7 +25,10 @@ def render_items(
         module_type = config.get_module_type(alias)
         module = get_module(module_type)
         if module is None:
-            continue
+            report_error(
+                f"unknown module type '{module_type}' (alias '{alias}')",
+                ValueError(f"no module found for type '{module_type}'"),
+            )
         inputs = resolver.resolve_for_module(module.__inputs__)
         theme_vars = config.get_theme_vars(alias)
         try:

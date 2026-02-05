@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import sys
+from rich.console import Console
 
 
 class StatuslineError(Exception):
@@ -13,8 +13,9 @@ class StatuslineError(Exception):
 
 def report_error(context: str, exc: Exception) -> None:
     """Print a friendly error message to stdout and raise StatuslineError."""
-    print(
-        f"statusline: {context}: {exc}\n"
-        f"  Run 'statusline preview' to see the full traceback.",
+    console = Console()
+    console.print(
+        f"[red]statusline: {context}: {exc}\n"
+        f"  Run 'statusline preview' to see the full traceback.[/red]",
     )
     raise StatuslineError(str(exc)) from exc

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import traceback
 from pathlib import Path
 from typing import Annotated
 
@@ -18,6 +19,7 @@ from statusline.config import (
     generate_default_config_toml,
     load_config,
 )
+from statusline.errors import StatuslineError, report_error
 from statusline.input import get_sample_input, parse_input
 from statusline.modules import get_module
 from statusline.renderer import render_statusline
@@ -40,7 +42,11 @@ class Context(typer.Context):
 app = typer.Typer(
     help="A customizable status line for Claude Code.",
     no_args_is_help=True,
+    pretty_exceptions_show_locals=False,
 )
+
+# Module-level flag so main() can access it outside the typer context.
+_no_fail = False
 
 
 class Env:
@@ -65,7 +71,16 @@ def app_main(
             help="Path to config file (use /dev/null to skip user config).",
         ),
     ] = None,
+    no_fail: Annotated[
+        bool,
+        typer.Option(
+            "--no-fail",
+            help="Exit 0 even on errors (shows error in status line instead of failing).",
+        ),
+    ] = False,
 ):
+    global _no_fail
+    _no_fail = no_fail
     ctx.obj = Env(
         console=Console(force_terminal=force_terminal, highlight=True),
         config_path=config_path,
@@ -144,12 +159,10 @@ def render(
     config = merge_cli_options(config, modules, separator, theme, color, width)
     if ctx.command.name == "render":
         if sys.stdin.isatty():
-            typer.echo(
-                "Error: 'render' expects JSON input via stdin.\n"
-                "Use 'statusline preview' to see sample output, or pipe JSON to this command.",
-                err=True,
+            report_error(
+                "no input",
+                ValueError("'render' expects JSON input via stdin"),
             )
-            raise typer.Exit(1)
         input_data = parse_input(sys.stdin)
     else:
         input_data = get_sample_input()
@@ -178,7 +191,7 @@ def install() -> None:
     # Update statusLine configuration
     settings["statusLine"] = {
         "type": "command",
-        "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline render",
+        "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline --no-fail render",
     }
 
     # Ensure directory exists
@@ -250,8 +263,10 @@ def module_info(
 
     module = get_module(module_type or name)
     if module is None:
-        typer.secho(f"Module [bold]{name}[/] unknown")
-        raise typer.Exit(code=2)
+        report_error(
+            f"unknown module '{name}'",
+            ValueError(f"no module found for '{module_type or name}'"),
+        )
 
     t.add_row("Name", name)
     if module_type is not None:
@@ -322,8 +337,10 @@ def config(
     if init:
         # Create config file with defaults
         if CONFIG_PATH.exists():
-            typer.echo(f"Config file already exists at {CONFIG_PATH}")
-            raise typer.Exit(1)
+            report_error(
+                "config already exists",
+                FileExistsError(str(CONFIG_PATH)),
+            )
 
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         CONFIG_PATH.write_text(generate_default_config_toml())
@@ -343,11 +360,15 @@ def config(
 
 def main() -> None:
     """Entry point for the CLI."""
-    from statusline.errors import StatuslineError, report_error
-
     try:
-        app()
+        try:
+            app()
+        except StatuslineError:
+            raise
+        except Exception as exc:
+            report_error("unexpected error", exc)
     except StatuslineError:
+        if _no_fail:
+            traceback.print_exc(file=sys.stderr)
+            return
         raise
-    except Exception as exc:
-        report_error("unexpected error", exc)
