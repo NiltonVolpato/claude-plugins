@@ -254,6 +254,54 @@ class TestExpandableBar:
         assert "#" in text_str
         assert "." in text_str
 
+    def test_fill_state_caps(self):
+        """Fill-state caps replace the first/last segment positions."""
+        opts = {
+            "full": "X",
+            "empty": "_",
+            "full_left": "<",
+            "empty_left": "(",
+            "full_right": ">",
+            "empty_right": ")",
+            "width": 5,
+        }
+        console = self._make_console(width=5)
+        options = console.options.update_width(5)
+
+        def render(pct):
+            bar = ExpandableBar(pct, opts)
+            return list(bar.__rich_console__(console, options))[0].plain
+
+        assert render(0) == "(___)"
+        assert render(20) == "<___)"
+        assert render(60) == "<XX_)"
+        assert render(100) == "<XXX>"
+
+    def test_fill_state_caps_with_frame(self):
+        """Fill-state caps work together with an outer frame."""
+        opts = {
+            "full": "X",
+            "empty": "_",
+            "left": "[",
+            "right": "]",
+            "full_left": "<",
+            "empty_left": "(",
+            "full_right": ">",
+            "empty_right": ")",
+            "width": 5,
+        }
+        console = self._make_console(width=7)
+        options = console.options.update_width(7)
+
+        def render(pct):
+            bar = ExpandableBar(pct, opts)
+            return list(bar.__rich_console__(console, options))[0].plain
+
+        assert render(0) == "[(___)]"
+        assert render(20) == "[<___)]"
+        assert render(60) == "[<XX_)]"
+        assert render(100) == "[<XXX>]"
+
 
 class TestModuleRegistry:
     def test_get_all_modules(self):

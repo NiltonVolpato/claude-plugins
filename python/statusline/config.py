@@ -132,7 +132,7 @@ class Config(BaseModel):
         result: ThemeVars = {}
         if module_type != alias:
             base_config = self.get_module_config(module_type)
-            base_theme = base_config.theme or self.theme
+            base_theme = theme_name
             if base_config.format:
                 result["format"] = base_config.format
             base_theme_vars = base_config.themes.get(base_theme, {})
