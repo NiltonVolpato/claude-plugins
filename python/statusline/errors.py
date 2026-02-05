@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import NoReturn
+
 from rich.console import Console
 
 
@@ -11,7 +13,7 @@ class StatuslineError(Exception):
     pass
 
 
-def report_error(context: str, exc: Exception) -> None:
+def report_error(context: str, exc: Exception) -> NoReturn:
     """Print a friendly error message to stdout and raise StatuslineError."""
     from statusline.style import render_to_ansi
 

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from statusline.config import ThemeVars
-from statusline.input import GitInfo, InputModel
+from statusline.input import GitInfo
 from statusline.modules import Module, register
-from statusline.templates import render_template
 
 
 @register
@@ -15,11 +13,8 @@ class GitModule(Module):
     name = "git"
     __inputs__ = [GitInfo]
 
-    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> str:
-        """Render git status info."""
+    def render(self, inputs, theme_vars, **kwargs):
         git_info = inputs.get("git")
         if not git_info or not git_info.branch:
             return ""
-
-        fmt, context = self.build_context(inputs, theme_vars)
-        return render_template(fmt, context)
+        return super().render(inputs, theme_vars, **kwargs)

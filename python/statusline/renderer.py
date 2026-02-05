@@ -30,14 +30,14 @@ def render_items(
                 ValueError(f"no module found for type '{module_type}'"),
             )
         inputs = resolver.resolve_for_module(module.__inputs__)
+        module_config = config.get_module_config(alias)
         theme_vars = config.get_theme_vars(alias)
         try:
-            rendered = module.render(inputs, theme_vars)
+            rendered = module.render(inputs, theme_vars, expand=module_config.expand)
         except Exception as exc:
             report_error(f"rendering module '{alias}'", exc)
         if rendered:
-            expand = config.get_module_config(alias).expand
-            items.append((rendered, expand))
+            items.append((rendered, module_config.expand))
     return items
 
 

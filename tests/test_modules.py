@@ -2,7 +2,6 @@
 
 from rich.console import Console, ConsoleOptions, RenderableType
 from rich.table import Table
-
 from statusline.input import (
     ContextWindowInfo,
     CostInfo,
@@ -34,7 +33,11 @@ class TestModelModule:
         assert module is not None
         inputs = {"model": ModelInfo(id="test-model", display_name="Test Model")}
         result = module.render(
-            inputs, {"format": "[cyan]{{ theme.label }}{{ model.display_name }}[/cyan]", "label": "\uee0d "}
+            inputs,
+            {
+                "format": "[cyan]{{ theme.label }}{{ model.display_name }}[/cyan]",
+                "label": "\uee0d ",
+            },
         )
         assert "\uee0d" in result
         assert "Test Model" in result
@@ -49,7 +52,9 @@ class TestWorkspaceModule:
                 current_dir="/home/user/my-project", project_dir="/home/user/my-project"
             )
         }
-        result = module.render(inputs, {"format": "{{ workspace.current_dir | basename }}"})
+        result = module.render(
+            inputs, {"format": "{{ workspace.current_dir | basename }}"}
+        )
         assert result == "my-project"
 
     def test_render_empty_workspace_falls_back_to_cwd(self):
@@ -57,16 +62,22 @@ class TestWorkspaceModule:
         assert module is not None
         # Provider handles the fallback, so we test with the fallback already applied
         inputs = {
-            "workspace": WorkspaceInfo(current_dir="/fallback/path", project_dir="/fallback/path")
+            "workspace": WorkspaceInfo(
+                current_dir="/fallback/path", project_dir="/fallback/path"
+            )
         }
-        result = module.render(inputs, {"format": "{{ workspace.current_dir | basename }}"})
+        result = module.render(
+            inputs, {"format": "{{ workspace.current_dir | basename }}"}
+        )
         assert result == "path"
 
     def test_render_empty_both_returns_tilde(self):
         module = get_module("workspace")
         assert module is not None
         inputs = {"workspace": WorkspaceInfo(current_dir="", project_dir="")}
-        result = module.render(inputs, {"format": "{{ workspace.current_dir | basename }}"})
+        result = module.render(
+            inputs, {"format": "{{ workspace.current_dir | basename }}"}
+        )
         assert result == "~"
 
 
@@ -75,21 +86,27 @@ class TestCostModule:
         module = get_module("cost")
         assert module is not None
         inputs = {"cost": CostInfo(total_cost_usd=0.05)}
-        result = module.render(inputs, {"format": "{{ cost.total_cost_usd | format_cost }}"})
+        result = module.render(
+            inputs, {"format": "{{ cost.total_cost_usd | format_cost }}"}
+        )
         assert result == "$0.05"
 
     def test_render_cost_dollars(self):
         module = get_module("cost")
         assert module is not None
         inputs = {"cost": CostInfo(total_cost_usd=1.23)}
-        result = module.render(inputs, {"format": "{{ cost.total_cost_usd | format_cost }}"})
+        result = module.render(
+            inputs, {"format": "{{ cost.total_cost_usd | format_cost }}"}
+        )
         assert result == "$1.23"
 
     def test_render_cost_small(self):
         module = get_module("cost")
         assert module is not None
         inputs = {"cost": CostInfo(total_cost_usd=0.0012)}
-        result = module.render(inputs, {"format": "{{ cost.total_cost_usd | format_cost }}"})
+        result = module.render(
+            inputs, {"format": "{{ cost.total_cost_usd | format_cost }}"}
+        )
         assert result == "$0.0012"
 
 
@@ -98,15 +115,19 @@ class TestContextModule:
         module = get_module("context")
         assert module is not None
         inputs = {"context": ContextWindowInfo(used_percentage=42.5)}
-        result = module.render(inputs, {"format": "{{ context.used_percentage | format_percent }}"})
-        assert result == "42%"
+        result = module.render(
+            inputs, {"format": "{{ context.used_percentage | format_percent }}"}
+        )
+        assert result == " 42%"
 
     def test_render_zero_percentage(self):
         module = get_module("context")
         assert module is not None
         inputs = {"context": ContextWindowInfo(used_percentage=0.0)}
-        result = module.render(inputs, {"format": "{{ context.used_percentage | format_percent }}"})
-        assert result == "0%"
+        result = module.render(
+            inputs, {"format": "{{ context.used_percentage | format_percent }}"}
+        )
+        assert result == "  0%"
 
 
 class TestVersionModule:
@@ -157,7 +178,9 @@ class TestContextBarModule:
         inputs = {"context": ContextWindowInfo(used_percentage=42.5)}
         result = module.render(
             inputs,
-            {"format": "{{ progress_bar(**theme.bar) }} {{ context.used_percentage | format_percent }}"},
+            {
+                "format": "{{ progress_bar(**theme.bar) }} {{ context.used_percentage | format_percent }}"
+            },
         )
         assert isinstance(result, Table)
 
@@ -171,7 +194,7 @@ class TestContextBarModule:
             {"format": "{{ context.used_percentage | format_percent }}"},
         )
         assert isinstance(result, str)
-        assert result == "42%"
+        assert result == " 42%"
 
     def test_progress_bar_accepts_overrides(self):
         """progress_bar() accepts inline overrides via kwargs."""
@@ -219,7 +242,9 @@ class TestExpandableBar:
         assert bar_high.percentage == 100.0
 
     def test_custom_chars(self):
-        bar = ExpandableBar(50.0, {"full": "#", "empty": ".", "left": "<", "right": ">"})
+        bar = ExpandableBar(
+            50.0, {"full": "#", "empty": ".", "left": "<", "right": ">"}
+        )
         console = self._make_console(width=12)
         options = console.options.update_width(12)
         segments = list(bar.__rich_console__(console, options))

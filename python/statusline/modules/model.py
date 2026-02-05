@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from statusline.config import ThemeVars
-from statusline.input import InputModel, ModelInfo
+from statusline.input import ModelInfo
 from statusline.modules import Module, register
-from statusline.templates import render_template
 
 
 @register
@@ -14,8 +12,3 @@ class ModelModule(Module):
 
     name = "model"
     __inputs__ = [ModelInfo]
-
-    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> str:
-        """Render the model display name."""
-        fmt, context = self.build_context(inputs, theme_vars)
-        return render_template(fmt, context)

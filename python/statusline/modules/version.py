@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from statusline.config import ThemeVars
-from statusline.input import InputModel, VersionInfo
+from statusline.input import VersionInfo
 from statusline.modules import Module, register
-from statusline.templates import render_template
 
 
 @register
@@ -14,8 +12,3 @@ class VersionModule(Module):
 
     name = "version"
     __inputs__ = [VersionInfo]
-
-    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars) -> str:
-        """Render the Claude Code version."""
-        fmt, context = self.build_context(inputs, theme_vars)
-        return render_template(fmt, context)

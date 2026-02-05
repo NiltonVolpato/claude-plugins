@@ -24,7 +24,7 @@ def _format_cost(value: float) -> str:
 
 def _format_percent(value: float) -> str:
     """Format percentage value."""
-    return f"{value:.0f}%"
+    return f"{value:3.0f}%"
 
 
 def _format_progress_bar(value: float, bar: dict | None = None) -> str:

@@ -20,7 +20,13 @@ class ContextBarModule(Module):
     name = "context_bar"
     __inputs__ = [ContextWindowInfo]
 
-    def render(self, inputs: dict[str, InputModel], theme_vars: ThemeVars):
+    def render(
+        self,
+        inputs: dict[str, InputModel],
+        theme_vars: ThemeVars,
+        *,
+        expand: bool = False,
+    ):
         context = inputs.get("context")
         if context is None:
             return ""
@@ -46,10 +52,10 @@ class ContextBarModule(Module):
 
         before, after = rendered.split(PROGRESS_BAR_PLACEHOLDER, 1)
         merged_opts = {**bar_defaults, **overrides}
-        bar = ExpandableBar(context.used_percentage, merged_opts)
+        bar = ExpandableBar(context.used_percentage, merged_opts, expand=expand)
 
         # Compose grid: [before?] [bar (ratio=1)] [after?]
-        grid = Table.grid()
+        grid = Table.grid(expand=expand)
         parts = []
         if before:
             grid.add_column()

@@ -346,6 +346,44 @@ class TestRendererExpand:
         assert "Test Model" in result
         assert len(result) == 80
 
+    def test_expand_false_context_bar_does_not_fill_width(self):
+        """A context_bar with expand=false stays at its minimum width."""
+        input_data = make_input(
+            context_window=ContextWindowInfo(used_percentage=50.0),
+        )
+        config = make_config(
+            enabled=["context_bar"],
+            theme="ascii",
+            color=False,
+            width=60,
+        )
+        result = render_statusline(input_data, config)
+        assert len(result) < 60
+
+    def test_expand_true_context_bar_fills_width(self):
+        """A context_bar with expand=true fills the full row width."""
+        input_data = make_input(
+            context_window=ContextWindowInfo(used_percentage=50.0),
+        )
+        config = make_config(
+            enabled=["context_bar"],
+            theme="ascii",
+            color=False,
+            width=60,
+        )
+        config = config.model_copy(
+            update={
+                "modules": {
+                    **config.modules,
+                    "context_bar": config.modules["context_bar"].model_copy(
+                        update={"expand": True}
+                    ),
+                }
+            }
+        )
+        result = render_statusline(input_data, config)
+        assert len(result) == 60
+
     def test_left_right_no_expand_gets_spacer(self):
         """Left/right with no expand still pads to full width."""
         input_data = make_input()

@@ -11,7 +11,9 @@ from rich.text import Text
 class ExpandableBar:
     """Rich renderable progress bar that fills its allocated width."""
 
-    def __init__(self, percentage: float, bar_opts: dict | None = None):
+    def __init__(
+        self, percentage: float, bar_opts: dict | None = None, *, expand: bool = False
+    ):
         self.percentage = max(0.0, min(100.0, percentage))
         opts = bar_opts or {}
         self.full_char = str(opts.get("full", "█"))
@@ -23,6 +25,7 @@ class ExpandableBar:
         self.full_right = str(opts.get("full_right", right))
         self.empty_right = str(opts.get("empty_right", right))
         self.width = int(opts.get("width", 10))
+        self.expand = expand
 
     def __rich_console__(self, console, options):
         width = options.max_width
@@ -44,5 +47,6 @@ class ExpandableBar:
         yield text
 
     def __rich_measure__(self, console, options):
-        total = self.width + len(self.full_left) + len(self.full_right)
-        return Measurement(total, total)
+        minimum = self.width + len(self.full_left) + len(self.full_right)
+        maximum = options.max_width if self.expand else minimum
+        return Measurement(minimum, maximum)
