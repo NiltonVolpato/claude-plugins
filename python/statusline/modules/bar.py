@@ -36,19 +36,20 @@ class ExpandableBar:
         # Space available for bar segments (after outer frame)
         bar_space = max(0, width - len(self.left) - len(self.right))
 
-        # Total filled positions (out of bar_space)
-        n_total = max(0, min(bar_space, int(bar_space * ratio)))
+        # Caps count as half-weight: effective units = middle + 2*0.5
+        effective = max(1, bar_space - 1)
+        filled = ratio * effective
 
         # Choose caps based on fill state
-        left_cap = self.full_left if n_total >= 1 else self.empty_left
-        right_cap = self.full_right if n_total >= bar_space else self.empty_right
+        left_cap = self.full_left if filled >= 0.5 else self.empty_left
+        right_cap = self.full_right if filled >= effective else self.empty_right
 
         # Middle segments (between caps)
         middle = max(0, bar_space - len(left_cap) - len(right_cap))
-        if n_total >= bar_space:
+        if filled >= effective:
             n_mid = middle
-        elif n_total >= 1:
-            n_mid = min(n_total - 1, middle)
+        elif filled >= 0.5:
+            n_mid = min(int(filled - 0.5), middle)
         else:
             n_mid = 0
 

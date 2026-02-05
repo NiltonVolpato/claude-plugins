@@ -255,7 +255,10 @@ class TestExpandableBar:
         assert "." in text_str
 
     def test_fill_state_caps(self):
-        """Fill-state caps replace the first/last segment positions."""
+        """Fill-state caps replace first/last positions with half weight.
+
+        6 chars = 2 caps (10% each) + 4 middle (20% each) = 100%.
+        """
         opts = {
             "full": "X",
             "empty": "_",
@@ -263,19 +266,22 @@ class TestExpandableBar:
             "empty_left": "(",
             "full_right": ">",
             "empty_right": ")",
-            "width": 5,
+            "width": 6,
         }
-        console = self._make_console(width=5)
-        options = console.options.update_width(5)
+        console = self._make_console(width=6)
+        options = console.options.update_width(6)
 
         def render(pct):
             bar = ExpandableBar(pct, opts)
             return list(bar.__rich_console__(console, options))[0].plain
 
-        assert render(0) == "(___)"
-        assert render(20) == "<___)"
-        assert render(60) == "<XX_)"
-        assert render(100) == "<XXX>"
+        assert render(0) == "(____)"  # 0%
+        assert render(10) == "<____)"  # 10%: left cap fills
+        assert render(30) == "<X___)"  # 30%: +1 middle
+        assert render(50) == "<XX__)"  # 50%: +2 middle
+        assert render(70) == "<XXX_)"  # 70%: +3 middle
+        assert render(90) == "<XXXX)"  # 90%: +4 middle
+        assert render(100) == "<XXXX>"  # 100%: right cap fills
 
     def test_fill_state_caps_with_frame(self):
         """Fill-state caps work together with an outer frame."""
@@ -288,19 +294,19 @@ class TestExpandableBar:
             "empty_left": "(",
             "full_right": ">",
             "empty_right": ")",
-            "width": 5,
+            "width": 6,
         }
-        console = self._make_console(width=7)
-        options = console.options.update_width(7)
+        console = self._make_console(width=8)
+        options = console.options.update_width(8)
 
         def render(pct):
             bar = ExpandableBar(pct, opts)
             return list(bar.__rich_console__(console, options))[0].plain
 
-        assert render(0) == "[(___)]"
-        assert render(20) == "[<___)]"
-        assert render(60) == "[<XX_)]"
-        assert render(100) == "[<XXX>]"
+        assert render(0) == "[(____)]"
+        assert render(10) == "[<____)]"
+        assert render(50) == "[<XX__)]"
+        assert render(100) == "[<XXXX>]"
 
 
 class TestModuleRegistry:
