@@ -13,9 +13,12 @@ class StatuslineError(Exception):
 
 def report_error(context: str, exc: Exception) -> None:
     """Print a friendly error message to stdout and raise StatuslineError."""
-    console = Console()
-    console.print(
+    from statusline.style import render_to_ansi
+
+    message = render_to_ansi(
         f"[red]statusline: {context}: {exc}\n"
-        f"  Run 'statusline preview' to see the full traceback.[/red]",
+        f"Run 'statusline preview' to see the full traceback.[/red]",
+        use_color=True,
     )
+    print(message)
     raise StatuslineError(str(exc)) from exc
