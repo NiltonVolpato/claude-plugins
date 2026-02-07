@@ -84,6 +84,7 @@ from statusline.modules import (  # noqa: E402, F401
     context,
     context_bar,
     cost,
+    events,
     git,
     model,
     version,

@@ -105,6 +105,30 @@ class VersionInfo(InputModel):
     version: str = Field(default="", description="Claude Code version string")
 
 
+class SessionInfo(InputModel):
+    """Session information for event tracking."""
+
+    name: ClassVar[str] = "session"
+
+    session_id: str = Field(default="", description="Current session ID")
+    cwd: str = Field(default="", description="Current working directory")
+
+
+# Event tuple type: (event_type, tool_name, agent_id, extra_info)
+EventTuple = tuple[str, str | None, str | None, str | None]
+
+
+class EventsInfo(InputModel):
+    """Events information for activity display."""
+
+    name: ClassVar[str] = "events"
+
+    events: list[EventTuple] = Field(
+        default_factory=list,
+        description="List of (event, tool, agent_id, extra) tuples in chronological order",
+    )
+
+
 class StatuslineInput(BaseModel):
     """Parsed input from Claude Code stdin."""
 
@@ -118,6 +142,7 @@ class StatuslineInput(BaseModel):
     cost: CostInfo = CostInfo()
     context_window: ContextWindowInfo = ContextWindowInfo()
     git: GitInfo = GitInfo()
+    events: EventsInfo = Field(default_factory=EventsInfo)
 
 
 def parse_input(stdin: TextIO) -> StatuslineInput:
@@ -126,6 +151,34 @@ def parse_input(stdin: TextIO) -> StatuslineInput:
         return StatuslineInput.model_validate_json(stdin.read())
     except ValidationError:
         return StatuslineInput()
+
+
+def get_sample_events() -> list[EventTuple]:
+    """Get sample events for preview mode."""
+    return [
+        # First turn: user prompt -> reading files -> stop
+        ("UserPromptSubmit", None, None, None),
+        ("PostToolUse", "Glob", None, None),
+        ("PostToolUse", "Read", None, None),
+        ("PostToolUse", "Read", None, None),
+        ("Stop", None, None, None),
+        # Second turn: user prompt -> editing -> git commit -> stop
+        ("UserPromptSubmit", None, None, None),
+        ("PostToolUse", "Edit", None, "+5-2"),
+        ("PostToolUse", "Bash", None, "git"),
+        ("Stop", None, None, None),
+        # Third turn: user prompt -> subagent -> stop
+        ("UserPromptSubmit", None, None, None),
+        ("PostToolUse", "Grep", None, None),
+        ("SubagentStart", None, "agent-1", None),
+        ("PostToolUse", "Read", "agent-1", None),
+        ("PostToolUse", "Edit", "agent-1", "+12-0"),
+        ("SubagentStop", None, "agent-1", None),
+        ("Stop", None, None, None),
+        # Fourth turn (in progress): user prompt -> reading
+        ("UserPromptSubmit", None, None, None),
+        ("PostToolUse", "Read", None, None),
+    ]
 
 
 def get_sample_input() -> StatuslineInput:
@@ -160,4 +213,5 @@ def get_sample_input() -> StatuslineInput:
             used_percentage=42.5,
             remaining_percentage=57.5,
         ),
+        events=EventsInfo(events=get_sample_events()),
     )

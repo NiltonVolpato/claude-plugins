@@ -16,7 +16,7 @@ type ThemeVars = dict[str, str | int | ThemeVars]
 CONFIG_PATH = Path.home() / ".claude" / "statusline.toml"
 
 
-class ModuleConfig(BaseModel):
+class ModuleConfig(BaseModel, extra="allow"):
     """Configuration for a single module."""
 
     type: str | None = None  # Module type to use (defaults to config key)
@@ -123,6 +123,9 @@ class Config(BaseModel):
         When an alias references a different module type via `type`, the base
         module type's theme vars are resolved first, then the alias's own
         config is layered on top (deep-merged).
+
+        Module-level settings (like `format`, `spacing`) act as defaults that
+        can be overridden by theme-specific values.
         """
         module_config = self.get_module_config(alias)
         theme_name = module_config.theme or self.theme
@@ -133,10 +136,15 @@ class Config(BaseModel):
         if module_type != alias:
             base_config = self.get_module_config(module_type)
             base_theme = theme_name
+            # Include extra fields from base config as defaults
+            result = _deep_merge(result, base_config.model_extra)
             if base_config.format:
                 result["format"] = base_config.format
             base_theme_vars = base_config.themes.get(base_theme, {})
             result = _deep_merge(result, base_theme_vars)
+
+        # Layer alias's own module-level extra fields
+        result = _deep_merge(result, module_config.model_extra)
 
         # Layer alias's own module-level format
         if module_config.format:

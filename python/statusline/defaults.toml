@@ -82,3 +82,7 @@ themes.nerd.label = "\uea68  "
 themes.ascii.label = "Git: "
 themes.emoji.label = "🌿 "
 themes.minimal.label = ""
+
+[modules.events]
+expand = true
+spacing = 2

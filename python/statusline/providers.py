@@ -7,16 +7,21 @@ StatuslineInput or compute it independently (e.g., via subprocess).
 
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from statusline.input import (
     ContextWindowInfo,
     CostInfo,
+    EventsInfo,
+    EventTuple,
     GitInfo,
     InputModel,
     ModelInfo,
+    SessionInfo,
     VersionInfo,
     WorkspaceInfo,
 )
@@ -124,6 +129,72 @@ class VersionInfoProvider(InputProvider):
 
     def provide(self, input: StatuslineInput) -> VersionInfo:
         return VersionInfo(version=input.version or "?")
+
+
+@provider
+class SessionInfoProvider(InputProvider):
+    """Provides session information from StatuslineInput."""
+
+    input_type = SessionInfo
+
+    def provide(self, input: StatuslineInput) -> SessionInfo:
+        return SessionInfo(
+            session_id=input.session_id,
+            cwd=input.cwd,
+        )
+
+
+@provider
+class EventsInfoProvider(InputProvider):
+    """Provides events from database or StatuslineInput."""
+
+    input_type = EventsInfo
+
+    def provide(self, input: StatuslineInput) -> EventsInfo:
+        # If events are provided directly in input, use them (for preview/testing)
+        if input.events.events:
+            return input.events
+
+        # Otherwise query from database
+        if not input.session_id or not input.cwd:
+            return EventsInfo()
+
+        db_path = self._get_db_path(input.cwd)
+        if not db_path.exists():
+            return EventsInfo()
+
+        events = self._query_events(db_path, input.session_id, limit=500)
+        return EventsInfo(events=events)
+
+    def _get_db_path(self, cwd: str) -> Path:
+        """Get the SQLite database path for this project."""
+        project_slug = cwd.replace("/", "-")
+        return (
+            Path.home() / ".claude" / "projects" / project_slug / "statusline-events.db"
+        )
+
+    def _query_events(
+        self, db_path: Path, session_id: str, limit: int
+    ) -> list[EventTuple]:
+        """Query recent events from the database."""
+        try:
+            conn = sqlite3.connect(db_path, timeout=1.0)
+            cursor = conn.execute(
+                """
+                SELECT event, tool, agent_id, extra
+                FROM events
+                WHERE session_id = ?
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (session_id, limit),
+            )
+            # Reverse to get chronological order (oldest first)
+            events = list(reversed(cursor.fetchall()))
+            conn.close()
+            return events
+        except sqlite3.Error:
+            return []
 
 
 @provider
