@@ -15,7 +15,7 @@ from statusline.modules import Module, register
 TOOL_ICONS = {
     "Bash": "[bright_black]\uea85[/] ",  # cod-terminal
     "Edit": "[yellow]\uf4d2[/] ",  # fa-edit (pencil)
-    "Write": "[yellow]\uea7f[/] ",  # fa-edit
+    "Write": "[green]\uea7f[/] ",  # fa-edit
     "Read": "[cyan]\U000f0dca[/] ",  # cod-eye
     "Glob": "[blue]\uf002[/] ",  # cod-search
     "Grep": "[blue]\uf002[/] ",  # cod-search
@@ -39,6 +39,7 @@ BASH_ICONS = {
     "sqlite3": "[blue]\uf472[/] ",  # cod-database
     "sleep": "[yellow]\U000f04b2[/] ",
     "chatterbox": "[cyan]\U000f050a[/] ",
+    "rm": "[red]\U000f01b4[/]",
 }
 
 # Bar characters for line counts (logarithmic scale)
@@ -63,6 +64,7 @@ EVENT_ICONS = {
     "SubagentStop": "[bold blue]\U000f0441[/] ",  # fa-stop
     "UserPromptSubmit": "[bright_white]\uf007[/] ",  # fa-user
     "Stop": "[green]\uf00c[/] ",  # fa-check
+    "StopHookActive": "[yellow]\uf04c[/] ",  # fa-pause (stop with hook running)
     "Interrupt": "[red]\ue009[/] ",  # interrupted/cancelled (synthetic)
 }
 
@@ -302,6 +304,14 @@ class EventsModule(Module):
                 return text, text.cell_len
             return None, 0
 
+        # Stop with hook_active -> show as StopHookActive (pause icon)
+        if event == "Stop" and extra == "hook_active":
+            icon = event_icons.get("StopHookActive", "")
+            if icon:
+                text = Text.from_markup(icon)
+                return text, text.cell_len
+            return None, 0
+
         # Tool use events (or legacy events with tool but no event type)
         if tool and (event == "PostToolUse" or not event):
             # For Bash, check if there's a command-specific icon
@@ -313,8 +323,8 @@ class EventsModule(Module):
                     icon = bash_icons[cmd]
                     text = Text.from_markup(icon)
                     return text, text.cell_len
-            # For Edit/Write, show line change bars
-            if tool in ("Edit", "Write") and extra and extra.startswith("+"):
+            # For Edit, show line change bars (Write just shows icon)
+            if tool == "Edit" and extra and extra.startswith("+"):
                 base_icon = tool_icons.get(tool, "✏")
                 try:
                     # Parse "+N-M" format

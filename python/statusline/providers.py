@@ -174,25 +174,73 @@ class EventsInfoProvider(InputProvider):
     def _query_events(
         self, db_path: Path, session_id: str, limit: int
     ) -> list[EventTuple]:
-        """Query recent events from the database."""
+        """Query recent events from events_v2 table using SQLite JSON operators."""
         try:
             conn = sqlite3.connect(db_path, timeout=1.0)
             cursor = conn.execute(
                 """
-                SELECT event, tool, agent_id, extra
-                FROM events
+                SELECT
+                    data->>'hook_event_name' as event,
+                    data->>'tool_name' as tool,
+                    data->>'agent_id' as agent_id,
+                    data as raw_data
+                FROM events_v2
                 WHERE session_id = ?
                 ORDER BY ts DESC
                 LIMIT ?
                 """,
                 (session_id, limit),
             )
-            # Reverse to get chronological order (oldest first)
-            events = list(reversed(cursor.fetchall()))
+            rows = list(reversed(cursor.fetchall()))
             conn.close()
-            return events
+            return [self._row_to_event(row) for row in rows]
         except sqlite3.Error:
             return []
+
+    def _row_to_event(self, row: tuple) -> EventTuple:
+        """Convert a raw database row to EventTuple, computing extra from JSON."""
+        import json
+
+        event, tool, agent_id, raw_data = row
+        extra = None
+
+        if raw_data:
+            try:
+                data = json.loads(raw_data)
+                extra = self._compute_extra(event, tool, data)
+            except json.JSONDecodeError:
+                pass
+
+        return (event or "", tool, agent_id, extra)
+
+    def _compute_extra(
+        self, event: str | None, tool: str | None, data: dict
+    ) -> str | None:
+        """Compute extra field from JSON data."""
+        # Interrupt detection
+        if event == "PostToolUseFailure" and data.get("is_interrupt"):
+            return "interrupt"
+
+        # Stop with hook active
+        if event == "Stop" and data.get("stop_hook_active"):
+            return "hook_active"
+
+        tool_input = data.get("tool_input") or {}
+
+        # Bash command (truncated)
+        if tool == "Bash":
+            cmd = tool_input.get("command") or ""
+            return cmd[:200] if cmd else None
+
+        # Edit line counts
+        if tool == "Edit":
+            old = tool_input.get("old_string") or ""
+            new = tool_input.get("new_string") or ""
+            old_lines = (old.count("\n") + 1) if old else 0
+            new_lines = (new.count("\n") + 1) if new else 0
+            return f"+{new_lines}-{old_lines}"
+
+        return None
 
 
 @provider

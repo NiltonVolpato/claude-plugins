@@ -1,4 +1,4 @@
-"""Tests for the events logger module."""
+"""Tests for the events logger and provider modules."""
 
 from __future__ import annotations
 
@@ -11,120 +11,74 @@ from pathlib import Path
 import pytest
 
 from statusline.db import get_db_path
-from statusline.events_logger import extract_extra, log_event
-
-
-class TestExtractExtra:
-    """Tests for extract_extra function."""
-
-    def test_interrupt_detection(self):
-        """PostToolUseFailure with is_interrupt returns 'interrupt'."""
-        data = {"is_interrupt": True}
-        assert extract_extra("PostToolUseFailure", "Bash", data) == "interrupt"
-
-    def test_bash_command_truncation(self):
-        """Bash commands are truncated to 200 chars."""
-        long_cmd = "x" * 300
-        data = {"tool_input": {"command": long_cmd}}
-        result = extract_extra("PostToolUse", "Bash", data)
-        assert result == "x" * 200
-
-    def test_bash_empty_command(self):
-        """Empty bash command returns None."""
-        data = {"tool_input": {"command": ""}}
-        assert extract_extra("PostToolUse", "Bash", data) is None
-
-    def test_edit_line_counts(self):
-        """Edit returns +added-removed format."""
-        data = {"tool_input": {"old_string": "a\nb", "new_string": "x\ny\nz"}}
-        assert extract_extra("PostToolUse", "Edit", data) == "+3-2"
-
-    def test_write_line_counts(self):
-        """Write uses 'content' field instead of 'new_string'."""
-        data = {"tool_input": {"content": "line1\nline2\nline3"}}
-        assert extract_extra("PostToolUse", "Write", data) == "+3-0"
-
-    def test_none_value(self):
-        """Verify None value is handled."""
-        assert (
-            extract_extra(
-                "PostToolUse", "Edit", {"tool_input": {"old_string": None, "new_string": "x"}}
-            )
-            == "+1-0"
-        )
-
-    def test_empty_string(self):
-        """Verify empty string is handled."""
-        assert (
-            extract_extra(
-                "PostToolUse", "Edit", {"tool_input": {"old_string": "", "new_string": ""}}
-            )
-            == "+0-0"
-        )
-
-    def test_missing_keys(self):
-        """Verify missing keys are handled."""
-        assert extract_extra("PostToolUse", "Edit", {"tool_input": {}}) == "+0-0"
-
-    def test_missing_tool_input(self):
-        """Verify missing tool_input is handled."""
-        assert extract_extra("PostToolUse", "Edit", {}) == "+0-0"
-
-    def test_unknown_tool_returns_none(self):
-        """Unknown tools return None for extra."""
-        data = {"tool_input": {"some_field": "value"}}
-        assert extract_extra("PostToolUse", "Read", data) is None
-
-    def test_non_interrupt_failure(self):
-        """PostToolUseFailure without is_interrupt doesn't return 'interrupt'."""
-        data = {"is_interrupt": False, "tool_input": {"command": "ls"}}
-        assert extract_extra("PostToolUseFailure", "Bash", data) == "ls"
+from statusline.events_logger import log_event
+from statusline.providers import EventsInfoProvider
 
 
 class TestLogEvent:
-    """Tests for log_event function."""
+    """Tests for log_event function (writes to events_v2)."""
 
-    def test_sql_injection_prevented(self):
-        """Apostrophes and special chars don't break SQL."""
+    def test_stores_full_json(self):
+        """Event data is stored as JSON in events_v2."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            evil_cmd = "echo \"it's working; DROP TABLE events;\""
             data = {
                 "cwd": tmpdir,
                 "session_id": "test",
                 "hook_event_name": "PostToolUse",
                 "tool_name": "Bash",
-                "tool_input": {"command": evil_cmd},
+                "tool_input": {"command": "echo hello"},
             }
             log_event(data)
 
-            # Verify event was logged with exact command preserved
             db_path = get_db_path(tmpdir)
             conn = sqlite3.connect(db_path)
             row = conn.execute(
-                "SELECT extra FROM events WHERE session_id = 'test'"
+                "SELECT data FROM events_v2 WHERE session_id = 'test'"
             ).fetchone()
             assert row is not None
-            assert row[0] == evil_cmd
+            stored = json.loads(row[0])
+            assert stored["tool_name"] == "Bash"
+            assert stored["tool_input"]["command"] == "echo hello"
             conn.close()
 
-    def test_all_fields_stored(self):
-        """All event fields are stored correctly."""
+    def test_sql_injection_single_quote(self):
+        """Single quote SQL injection attempt is safely stored."""
         with tempfile.TemporaryDirectory() as tmpdir:
+            evil_session = "test'; DROP TABLE events_v2; --"
             data = {
                 "cwd": tmpdir,
-                "session_id": "sess-123",
-                "hook_event_name": "SubagentStart",
-                "tool_name": "",
-                "agent_id": "agent-456",
+                "session_id": evil_session,
+                "hook_event_name": "PostToolUse",
             }
             log_event(data)
 
             db_path = get_db_path(tmpdir)
             conn = sqlite3.connect(db_path)
+            # Table should still exist and data preserved
             row = conn.execute(
-                "SELECT session_id, event, agent_id FROM events"
+                "SELECT session_id FROM events_v2"
             ).fetchone()
-            assert row == ("sess-123", "SubagentStart", "agent-456")
+            assert row[0] == evil_session
+            conn.close()
+
+    def test_sql_injection_double_quote(self):
+        """Double quote SQL injection attempt is safely stored."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evil_session = 'test"; DROP TABLE events_v2; --'
+            data = {
+                "cwd": tmpdir,
+                "session_id": evil_session,
+                "hook_event_name": "PostToolUse",
+            }
+            log_event(data)
+
+            db_path = get_db_path(tmpdir)
+            conn = sqlite3.connect(db_path)
+            # Table should still exist and data preserved
+            row = conn.execute(
+                "SELECT session_id FROM events_v2"
+            ).fetchone()
+            assert row[0] == evil_session
             conn.close()
 
     def test_missing_cwd_is_ignored(self):
@@ -136,22 +90,68 @@ class TestLogEvent:
         # Should not raise
         log_event(data)
 
-    def test_empty_tool_name_stored_as_null(self):
-        """Empty tool names are stored as NULL."""
+    def test_injects_event_name_from_env(self, monkeypatch):
+        """Event name is injected from CLAUDE_HOOK_EVENT_NAME env var."""
         with tempfile.TemporaryDirectory() as tmpdir:
+            monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "Stop")
             data = {
                 "cwd": tmpdir,
                 "session_id": "test",
-                "hook_event_name": "Stop",
-                "tool_name": "",
             }
             log_event(data)
 
             db_path = get_db_path(tmpdir)
             conn = sqlite3.connect(db_path)
-            row = conn.execute("SELECT tool FROM events").fetchone()
-            assert row[0] is None
+            row = conn.execute(
+                "SELECT data->>'hook_event_name' FROM events_v2"
+            ).fetchone()
+            assert row[0] == "Stop"
             conn.close()
+
+
+class TestComputeExtra:
+    """Tests for _compute_extra in EventsInfoProvider."""
+
+    @pytest.fixture
+    def provider(self):
+        return EventsInfoProvider()
+
+    def test_interrupt_detection(self, provider):
+        """PostToolUseFailure with is_interrupt returns 'interrupt'."""
+        data = {"is_interrupt": True}
+        assert provider._compute_extra("PostToolUseFailure", "Bash", data) == "interrupt"
+
+    def test_stop_hook_active(self, provider):
+        """Stop with stop_hook_active returns 'hook_active'."""
+        data = {"stop_hook_active": True}
+        assert provider._compute_extra("Stop", "", data) == "hook_active"
+
+    def test_stop_hook_inactive(self, provider):
+        """Stop without stop_hook_active returns None."""
+        data = {"stop_hook_active": False}
+        assert provider._compute_extra("Stop", "", data) is None
+
+    def test_bash_command_truncation(self, provider):
+        """Bash commands are truncated to 200 chars."""
+        long_cmd = "x" * 300
+        data = {"tool_input": {"command": long_cmd}}
+        result = provider._compute_extra("PostToolUse", "Bash", data)
+        assert result == "x" * 200
+
+    def test_bash_empty_command(self, provider):
+        """Empty bash command returns None."""
+        data = {"tool_input": {"command": ""}}
+        assert provider._compute_extra("PostToolUse", "Bash", data) is None
+
+    def test_edit_line_counts(self, provider):
+        """Edit returns +added-removed format."""
+        data = {"tool_input": {"old_string": "a\nb", "new_string": "x\ny\nz"}}
+        assert provider._compute_extra("PostToolUse", "Edit", data) == "+3-2"
+
+    def test_unknown_tool_returns_none(self, provider):
+        """Unknown tools return None for extra."""
+        data = {"tool_input": {"some_field": "value"}}
+        assert provider._compute_extra("PostToolUse", "Read", data) is None
 
 
 @pytest.mark.parametrize(
@@ -166,7 +166,7 @@ class TestLogEvent:
     ],
 )
 def test_all_event_types(event_name):
-    """All hook event types are logged correctly."""
+    """All hook event types are logged and queryable."""
     with tempfile.TemporaryDirectory() as tmpdir:
         data = {
             "cwd": tmpdir,
@@ -177,7 +177,9 @@ def test_all_event_types(event_name):
 
         db_path = get_db_path(tmpdir)
         conn = sqlite3.connect(db_path)
-        row = conn.execute("SELECT event FROM events").fetchone()
+        row = conn.execute(
+            "SELECT data->>'hook_event_name' FROM events_v2"
+        ).fetchone()
         assert row[0] == event_name
         conn.close()
 
@@ -204,9 +206,11 @@ def test_end_to_end_cli():
         )
         assert result.returncode == 0
 
-        # Verify database
+        # Verify JSON storage
         db_path = get_db_path(tmpdir)
         conn = sqlite3.connect(db_path)
-        row = conn.execute("SELECT event, tool, extra FROM events").fetchone()
-        assert row == ("PostToolUse", "Bash", "echo hello")
+        row = conn.execute(
+            "SELECT data->>'tool_name', data->'tool_input'->>'command' FROM events_v2"
+        ).fetchone()
+        assert row == ("Bash", "echo hello")
         conn.close()
