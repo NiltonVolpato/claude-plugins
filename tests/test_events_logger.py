@@ -121,16 +121,6 @@ class TestComputeExtra:
         data = {"is_interrupt": True}
         assert provider._compute_extra("PostToolUseFailure", "Bash", data) == "interrupt"
 
-    def test_stop_hook_active(self, provider):
-        """Stop with stop_hook_active returns 'hook_active'."""
-        data = {"stop_hook_active": True}
-        assert provider._compute_extra("Stop", "", data) == "hook_active"
-
-    def test_stop_hook_inactive(self, provider):
-        """Stop without stop_hook_active returns None."""
-        data = {"stop_hook_active": False}
-        assert provider._compute_extra("Stop", "", data) is None
-
     def test_bash_command_truncation(self, provider):
         """Bash commands are truncated to 200 chars."""
         long_cmd = "x" * 300

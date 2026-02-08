@@ -222,9 +222,6 @@ class EventsInfoProvider(InputProvider):
             return "interrupt"
 
         # Stop with hook active
-        if event == "Stop" and data.get("stop_hook_active"):
-            return "hook_active"
-
         tool_input = data.get("tool_input") or {}
 
         # Bash command (truncated)

@@ -61,6 +61,7 @@ ASCII_EVENT_ICONS = {
     "SubagentStop": "< ",
     "UserPromptSubmit": "U ",
     "Stop": "S ",
+    "StopUndone": "~ ",  # Stop that got cancelled by hook
     "Interrupt": "X ",
 }
 
@@ -392,7 +393,7 @@ class TestEventToIcon:
 
         module = EventsModule()
         text, _ = module._event_to_icon(
-            event, tool, extra, ASCII_TOOL_ICONS, ASCII_EVENT_ICONS, ASCII_BASH_ICONS
+            event, tool, extra, ASCII_TOOL_ICONS, ASCII_EVENT_ICONS, ASCII_BASH_ICONS, {}
         )
         return text.plain if text else ""
 
@@ -435,7 +436,7 @@ class TestEditWithLineCounts:
 
         module = EventsModule()
         text, width = module._event_to_icon(
-            "PostToolUse", "Edit", "+10-0", TOOL_ICONS, EVENT_ICONS, BASH_ICONS
+            "PostToolUse", "Edit", "+10-0", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
         )
         assert text is not None
         plain = text.plain
@@ -447,7 +448,7 @@ class TestEditWithLineCounts:
 
         module = EventsModule()
         text, width = module._event_to_icon(
-            "PostToolUse", "Edit", "+0-50", TOOL_ICONS, EVENT_ICONS, BASH_ICONS
+            "PostToolUse", "Edit", "+0-50", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
         )
         assert text is not None
         plain = text.plain
@@ -459,7 +460,7 @@ class TestEditWithLineCounts:
 
         module = EventsModule()
         text, width = module._event_to_icon(
-            "PostToolUse", "Edit", "+100-5", TOOL_ICONS, EVENT_ICONS, BASH_ICONS
+            "PostToolUse", "Edit", "+100-5", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
         )
         assert text is not None
         plain = text.plain
@@ -530,3 +531,170 @@ class TestToolIconsComplete:
         expected = ["git", "cargo", "uv", "python", "pytest", "npm", "docker"]
         for cmd in expected:
             assert cmd in BASH_ICONS
+
+
+class TestSpacingAfterTurnEnd:
+    """Regression tests for spacing after turn-end events (Stop, SubagentStop).
+
+    Turn-end events have trailing boundary padding, so the next icon should NOT
+    get additional prefix spacing to avoid double-spacing.
+    """
+
+    def _render_events_plain(self, events: list[EventTuple], spacing: int = 1) -> str:
+        """Render events and return plain text (no ANSI codes)."""
+        from statusline.modules.events import EventsModule
+        from statusline.input import EventsInfo
+        import re
+
+        module = EventsModule()
+        theme_vars = {"spacing": spacing}
+        result = module.render(
+            {"events": EventsInfo(events=events)},
+            theme_vars,
+        )
+        # Convert Rich renderable to text
+        from rich.console import Console
+        from io import StringIO
+
+        console = Console(file=StringIO(), force_terminal=True, width=200)
+        console.print(result, end="")
+        raw = console.file.getvalue()
+        # Strip ANSI escape codes
+        return re.sub(r'\x1b\[[0-9;]*m', '', raw)
+
+    def test_no_double_spacing_after_stop(self):
+        """After Stop (turn-end), next icon should not get prefix spacing.
+
+        Expected spacing after Stop:
+        - Icon trailing space (1) + boundary padding (1) = 2 spaces
+        Bug would give: icon (1) + boundary (1) + prefix (2) = 4 spaces
+        """
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Read", None, None),
+            ("Stop", None, None, None),
+            ("PostToolUse", "Bash", None, "echo test"),
+        ]
+        plain = self._render_events_plain(events, spacing=2)
+        # Find the Stop icon (checkmark) and count spaces after it
+        # The checkmark is \uf00c which renders as a special char
+        # Just verify there aren't 4+ consecutive spaces anywhere
+        assert "    " not in plain, f"Found 4+ consecutive spaces (double spacing bug): {repr(plain)}"
+
+    def test_no_double_spacing_after_subagent_stop(self):
+        """After SubagentStop (turn-end), next icon should not get prefix spacing."""
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("SubagentStart", None, "agent-1", None),
+            ("PostToolUse", "Read", None, None),
+            ("SubagentStop", None, "agent-1", None),
+            ("PostToolUse", "Bash", None, "echo test"),
+        ]
+        plain = self._render_events_plain(events, spacing=2)
+        assert "    " not in plain, f"Found 4+ consecutive spaces (double spacing bug): {repr(plain)}"
+
+
+class TestStopUndoneDetection:
+    """Tests for detecting Stop events that were cancelled by hooks."""
+
+    def _render_events_plain(self, events: list[EventTuple]) -> str:
+        """Render events and return plain text (no ANSI codes)."""
+        from statusline.modules.events import EventsModule
+        from statusline.input import EventsInfo
+        import re
+
+        module = EventsModule()
+        # Use ASCII icons for predictable output
+        theme_vars = {
+            "event_icons": ASCII_EVENT_ICONS,
+            "tool_icons": ASCII_TOOL_ICONS,
+            "bash_icons": ASCII_BASH_ICONS,
+            "spacing": 0,
+        }
+        result = module.render({"events": EventsInfo(events=events)}, theme_vars)
+        from rich.console import Console
+        from io import StringIO
+
+        console = Console(file=StringIO(), force_terminal=True, width=200)
+        console.print(result, end="")
+        raw = console.file.getvalue()
+        return re.sub(r'\x1b\[[0-9;]*m', '', raw)
+
+    def test_stop_followed_by_tool_is_undone(self):
+        """Stop followed by tool use should show as StopUndone (~)."""
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Read", None, None),
+            ("Stop", None, None, None),  # Cancelled by hook
+            ("PostToolUse", "Bash", None, "chatterbox"),  # Hook triggered this
+            ("Stop", None, None, None),  # Final stop
+        ]
+        plain = self._render_events_plain(events)
+        # First Stop should be ~ (undone), second should be S (final)
+        assert "~" in plain, f"Expected StopUndone (~) but got: {repr(plain)}"
+        assert "S" in plain, f"Expected Stop (S) but got: {repr(plain)}"
+
+    def test_stop_followed_by_subagent_stop_then_tool_is_undone(self):
+        """Stop → SubagentStop → tool use should show StopUndone.
+
+        Claude Code fires both Stop and SubagentStop together, so we need
+        to skip over SubagentStop when looking ahead.
+        """
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Read", None, None),
+            ("Stop", None, None, None),  # Cancelled
+            ("SubagentStop", None, None, None),  # Skip this when looking ahead
+            ("PostToolUse", "Bash", None, "chatterbox"),
+            ("Stop", None, None, None),  # Final
+            ("SubagentStop", None, None, None),
+        ]
+        plain = self._render_events_plain(events)
+        assert "~" in plain, f"Expected StopUndone (~) but got: {repr(plain)}"
+
+    def test_stop_followed_by_user_prompt_is_not_undone(self):
+        """Stop followed by UserPromptSubmit is a normal stop."""
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Read", None, None),
+            ("Stop", None, None, None),
+            ("UserPromptSubmit", None, None, None),  # New turn, not hook
+        ]
+        plain = self._render_events_plain(events)
+        # Should have S (normal stop), not ~ (undone)
+        assert "S" in plain, f"Expected Stop (S) but got: {repr(plain)}"
+        assert plain.count("~") == 0, f"Unexpected StopUndone (~): {repr(plain)}"
+
+    def test_final_stop_at_end_is_not_undone(self):
+        """Stop at end of events (no following event) is normal."""
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Read", None, None),
+            ("Stop", None, None, None),
+        ]
+        plain = self._render_events_plain(events)
+        assert "S" in plain, f"Expected Stop (S) but got: {repr(plain)}"
+        assert "~" not in plain, f"Unexpected StopUndone (~): {repr(plain)}"
+
+    def test_stop_undone_has_normal_spacing(self):
+        """StopUndone should have same spacing as normal tools, not turn-end spacing.
+
+        Regression test: StopUndone was getting turn-end boundary padding (2 spaces)
+        instead of normal spacing (3 spaces with spacing=2).
+        """
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Read", None, None),
+            ("Stop", None, None, None),  # Will be StopUndone
+            ("PostToolUse", "Bash", None, "test"),
+            ("Stop", None, None, None),
+        ]
+        plain = self._render_events_plain(events)
+        # With spacing=0, StopUndone (~) should NOT have extra boundary space
+        # Find positions and check spacing is consistent
+        undo_pos = plain.find("~")
+        bash_pos = plain.find("$")  # Bash default icon
+        assert undo_pos != -1, f"Expected StopUndone (~): {repr(plain)}"
+        assert bash_pos != -1, f"Expected Bash ($): {repr(plain)}"
+        # With spacing=0, they should be adjacent (just icon trailing spaces)
+        assert bash_pos == undo_pos + 2, f"StopUndone spacing wrong: {repr(plain)}"

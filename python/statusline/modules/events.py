@@ -39,7 +39,7 @@ BASH_ICONS = {
     "sqlite3": "[blue]\uf472[/] ",  # cod-database
     "sleep": "[yellow]\U000f04b2[/] ",
     "chatterbox": "[cyan]\U000f050a[/] ",
-    "rm": "[red]\U000f01b4[/]",
+    "rm": "[red]\U000f01b4[/] ",
 }
 
 # Bar characters for line counts (logarithmic scale)
@@ -57,14 +57,18 @@ def _lines_to_bar(count: int) -> str:
     return LINE_BARS[-1]
 
 
+# NOTE: Many Nerd Font icons are wider than 1 cell (1.5-2 chars) and overflow
+# into the next character space. The trailing space in icon definitions is
+# INTENTIONAL - it's part of the icon's visual width, not inter-icon spacing.
+# Do not remove these spaces thinking they're redundant padding.
 EVENT_ICONS = {
     "PostToolUse": None,  # Uses TOOL_ICONS
     "PostToolUseFailure": None,  # Check extra for "interrupt"
     "SubagentStart": "[bold blue]\U000f0443[/] ",  # cod-run-all (play arrow)
     "SubagentStop": "[bold blue]\U000f0441[/] ",  # fa-stop
     "UserPromptSubmit": "[bright_white]\uf007[/] ",  # fa-user
-    "Stop": "[green]\uf00c[/] ",  # fa-check
-    "StopHookActive": "[yellow]\uf04c[/] ",  # fa-pause (stop with hook running)
+    "Stop": "[green]\uf4f0[/] ",  # nf-md-check_circle (final stop)
+    "StopUndone": "[yellow]\uf0e2[/] ",  # fa-undo (stop that got cancelled by hook)
     "Interrupt": "[red]\ue009[/] ",  # interrupted/cancelled (synthetic)
 }
 
@@ -177,10 +181,11 @@ class EventsModule(Module):
         spacing_val = theme_vars.get("spacing", 1)
         spacing = int(spacing_val) if isinstance(spacing_val, (int, str)) else 1
 
-        # Background styles (warm/cool contrast)
-        turn_bg = "on #2a3a2a"  # Cool/greenish gray for main agent
-        subagent_bg = "on #2a2a3a"  # Blue-ish for subagents
-        user_bg = "on #3a2a2a"  # Warm/reddish gray for user prompts
+        # Background styles (configurable via theme_vars)
+        backgrounds = theme_vars.get("backgrounds", {})
+        turn_bg = backgrounds.get("turn", "on #2a3a2a")  # greenish for main agent
+        subagent_bg = backgrounds.get("subagent", "on #2a2a3a")  # blue-ish
+        user_bg = backgrounds.get("user", "on #3a2a2a")  # warm/reddish
 
         # Build segments with spacing
         # State: in_turn means we're inside an agent turn (after UserPromptSubmit, until Stop)
@@ -192,7 +197,8 @@ class EventsModule(Module):
         subagent_depth = 0
 
         prev_event = None
-        for event, tool, agent_id, extra in events:
+        prev_was_turn_end = False
+        for i, (event, tool, agent_id, extra) in enumerate(events):
             # Skip SubagentStop if it immediately follows Stop (redundant main agent ending)
             if event == "SubagentStop" and prev_event == "Stop":
                 prev_event = event
@@ -217,8 +223,29 @@ class EventsModule(Module):
                     segments.append(EventSegment(seg_text, 1 + int_width + 1))
                 in_turn = False
 
+            # Detect if Stop was undone by looking ahead
+            # If Stop is followed by tool use (not turn boundary), it was cancelled
+            # Skip over SubagentStop when looking ahead (it often follows Stop)
+            effective_event = event
+            if event == "Stop":
+                look_idx = i + 1
+                # Skip SubagentStop events
+                while look_idx < len(events) and events[look_idx][0] == "SubagentStop":
+                    look_idx += 1
+                if look_idx < len(events):
+                    next_event = events[look_idx][0]
+                    # If next meaningful event is tool use, Stop was undone
+                    if next_event not in ("UserPromptSubmit", "Stop"):
+                        effective_event = "StopUndone"
+
             icon_text, icon_width = self._event_to_icon(
-                event, tool, extra, tool_icons, event_icons, bash_icons
+                effective_event,
+                tool,
+                extra,
+                tool_icons,
+                event_icons,
+                bash_icons,
+                backgrounds,
             )
             if icon_text:
                 # Determine background based on event type (not turn state)
@@ -244,8 +271,8 @@ class EventsModule(Module):
                     text.append(" ", style=bg)
                     width += 1
                     is_first_in_turn = False
-                elif segments:
-                    # Normal spacing from previous icon
+                elif segments and not prev_was_turn_end:
+                    # Normal spacing from previous icon (skip if prev had boundary padding)
                     prefix = " " * spacing
                     if bg:
                         text.append(prefix, style=bg)
@@ -259,8 +286,9 @@ class EventsModule(Module):
                 text.append_text(icon_text)
 
                 # Trailing boundary padding: 1 space (symmetric with leading)
+                # Use effective_event so StopUndone doesn't get turn-end treatment
                 is_turn_end = (
-                    event in ("Stop", "SubagentStop", "UserPromptSubmit")
+                    effective_event in ("Stop", "SubagentStop", "UserPromptSubmit")
                     or is_interrupt
                 )
                 if is_turn_end:
@@ -281,6 +309,7 @@ class EventsModule(Module):
                 subagent_depth = max(0, subagent_depth - 1)
 
             prev_event = event
+            prev_was_turn_end = is_turn_end
 
         left = str(theme_vars.get("left", "["))
         right = str(theme_vars.get("right", "]"))
@@ -294,19 +323,12 @@ class EventsModule(Module):
         tool_icons: dict,
         event_icons: dict,
         bash_icons: dict,
+        backgrounds: dict,
     ) -> tuple[Text | None, int]:
         """Convert an event to its styled Text representation and display width."""
         # PostToolUseFailure with interrupt flag -> show as Interrupt
         if event == "PostToolUseFailure" and extra == "interrupt":
             icon = event_icons.get("Interrupt", "")
-            if icon:
-                text = Text.from_markup(icon)
-                return text, text.cell_len
-            return None, 0
-
-        # Stop with hook_active -> show as StopHookActive (pause icon)
-        if event == "Stop" and extra == "hook_active":
-            icon = event_icons.get("StopHookActive", "")
             if icon:
                 text = Text.from_markup(icon)
                 return text, text.cell_len
@@ -336,11 +358,12 @@ class EventsModule(Module):
                     if add_bar or rem_bar:
                         text = Text.from_markup(base_icon)
                         width = text.cell_len
+                        bar_bg = backgrounds.get("edit_bar", "#4c4d4e")
                         if add_bar:
-                            text.append(add_bar, style="green on #4c4d4e")
+                            text.append(add_bar, style=f"green on {bar_bg}")
                             width += cell_len(add_bar)
                         if rem_bar:
-                            text.append(rem_bar, style="red on #4c4d4e")
+                            text.append(rem_bar, style=f"red on {bar_bg}")
                             width += cell_len(rem_bar)
                         return text, width
                 except (ValueError, IndexError):

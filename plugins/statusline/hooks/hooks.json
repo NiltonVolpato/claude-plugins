@@ -1,11 +1,11 @@
 {
   "description": "Event logging for statusline activity tracking",
   "hooks": {
-    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
-    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
-    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
-    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }]
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "uvx --offline --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "uvx --offline --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "uvx --offline --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "uvx --offline --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "uvx --offline --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "uvx --offline --from git+https://github.com/NiltonVolpato/claude-plugins statusline log-event" }] }]
   }
 }
