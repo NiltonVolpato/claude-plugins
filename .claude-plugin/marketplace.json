@@ -17,6 +17,17 @@
       },
       "source": "./plugins/master-programmer",
       "homepage": "https://github.com/NiltonVolpato/claude-code-plugins/tree/main/plugins/master-programmer"
+    },
+    {
+      "name": "statusline",
+      "description": "Event logging hooks for the statusline activity display",
+      "version": "1.0.0",
+      "author": {
+        "name": "Nilton Volpato",
+        "email": "nilton@volpa.to"
+      },
+      "source": "./plugins/statusline",
+      "homepage": "https://github.com/NiltonVolpato/claude-plugins/tree/main/plugins/statusline"
     }
   ]
 }

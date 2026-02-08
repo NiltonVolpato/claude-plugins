@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from statusline.db import get_db_path
 from statusline.input import (
     ContextWindowInfo,
     CostInfo,
@@ -168,10 +169,7 @@ class EventsInfoProvider(InputProvider):
 
     def _get_db_path(self, cwd: str) -> Path:
         """Get the SQLite database path for this project."""
-        project_slug = cwd.replace("/", "-")
-        return (
-            Path.home() / ".claude" / "projects" / project_slug / "statusline-events.db"
-        )
+        return get_db_path(cwd)
 
     def _query_events(
         self, db_path: Path, session_id: str, limit: int

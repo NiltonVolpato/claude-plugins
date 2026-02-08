@@ -176,8 +176,24 @@ preview = app.command(name="preview", help="Render a preview of the status line"
 
 
 @app.command()
-def install() -> None:
-    """Configure Claude Code to use this statusline."""
+def install(
+    local: bool = typer.Option(
+        False, "--local", help="Use local code for development (symlinks plugin, uses local render command)"
+    ),
+) -> None:
+    """Configure Claude Code to use this statusline.
+
+    This command:
+    1. Configures the statusLine render command in settings
+    2. For --local: uses local code for both render and event logging
+    3. Otherwise: uses uvx to fetch from GitHub, prints plugin install instructions
+
+    NOTE: The plugin must be installed/enabled separately for event logging.
+    Without it, the statusline renders but the events module shows nothing.
+    """
+    # Find the project root (where pyproject.toml lives)
+    project_root = Path(__file__).parent.parent.parent.resolve()
+
     settings_path = Path.home() / ".claude" / "settings.json"
 
     # Load existing settings or create new
@@ -189,19 +205,43 @@ def install() -> None:
             pass
 
     # Update statusLine configuration
-    settings["statusLine"] = {
-        "type": "command",
-        "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline --no-fail render",
-    }
+    if local:
+        # Use local uv run for development
+        settings["statusLine"] = {
+            "type": "command",
+            "command": f"cd {project_root} && uv run statusline --no-fail render",
+        }
+    else:
+        # Use uvx to fetch from GitHub
+        settings["statusLine"] = {
+            "type": "command",
+            "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline --no-fail render",
+        }
 
     # Ensure directory exists
     settings_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Write settings
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    typer.echo(f"Statusline render configured in {settings_path}")
 
-    typer.echo(f"Statusline configured in {settings_path}")
-    typer.echo("Restart Claude Code to see the changes.")
+    if local:
+        # For local development, use --plugin-dir flag
+        plugin_path = project_root / "plugins" / "statusline"
+        typer.echo(f"\nTo test with the local plugin, restart Claude Code with:")
+        typer.echo(f"  claude --plugin-dir {plugin_path}")
+    else:
+        typer.echo("\nTo enable event logging, install the plugin:")
+        typer.echo("  /plugin install statusline@nv-claude-plugins")
+        typer.echo("\nRestart Claude Code to see the changes.")
+
+
+@app.command(name="log-event", hidden=True)
+def log_event_cmd() -> None:
+    """Log an event to the database (called by hooks)."""
+    from statusline.events_logger import log_event_from_stdin
+
+    log_event_from_stdin()
 
 
 # `statusline module` - subcommand group
