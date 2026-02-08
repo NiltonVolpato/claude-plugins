@@ -42,43 +42,46 @@ def render_markup(renderable, width: int = 40) -> str:
 
 
 # ASCII icon set for predictable test output
+# Using NBSP (\u00a0) like the real icons to match behavior
 ASCII_TOOL_ICONS = {
-    "Bash": "$ ",
-    "Edit": "E ",
-    "Write": "W ",
-    "Read": "R ",
-    "Glob": "G ",
-    "Grep": "? ",
-    "Task": "T ",
-    "WebFetch": "@ ",
-    "WebSearch": "@ ",
+    "Bash": "$\u00a0",
+    "Edit": "E\u00a0",
+    "Write": "W\u00a0",
+    "Read": "R\u00a0",
+    "Glob": "G\u00a0",
+    "Grep": "?\u00a0",
+    "Task": "T\u00a0",
+    "WebFetch": "@\u00a0",
+    "WebSearch": "@\u00a0",
 }
 
 ASCII_EVENT_ICONS = {
     "PostToolUse": None,
     "PostToolUseFailure": None,
-    "SubagentStart": "> ",
-    "SubagentStop": "< ",
-    "UserPromptSubmit": "U ",
-    "Stop": "S ",
-    "StopUndone": "~ ",  # Stop that got cancelled by hook
-    "Interrupt": "X ",
+    "SubagentStart": ">\u00a0",
+    "SubagentStop": "<\u00a0",
+    "UserPromptSubmit": "U\u00a0",
+    "Stop": "S\u00a0",
+    "StopUndone": "~\u00a0",  # Stop that got cancelled by hook
+    "Interrupt": "X\u00a0",
 }
 
 ASCII_BASH_ICONS = {
-    "git": "g ",
-    "pytest": "p ",
+    "git": "g\u00a0",
+    "pytest": "p\u00a0",
 }
 
 
 class TestLinesToBar:
     """Tests for the _lines_to_bar helper."""
 
-    def test_zero_returns_empty(self):
-        assert _lines_to_bar(0) == ""
+    def test_zero_returns_nbsp(self):
+        """Zero lines returns non-breaking space (invisible bar)."""
+        assert _lines_to_bar(0) == "\u00a0"
 
-    def test_negative_returns_empty(self):
-        assert _lines_to_bar(-5) == ""
+    def test_negative_returns_nbsp(self):
+        """Negative lines returns non-breaking space (invisible bar)."""
+        assert _lines_to_bar(-5) == "\u00a0"
 
     def test_one_to_five_lines(self):
         assert _lines_to_bar(1) == "▃"
@@ -233,7 +236,10 @@ class TestEventsModuleWithAsciiIcons:
     def _render_events(
         self, events: list[EventTuple], width: int = 30, **theme_vars
     ) -> str:
-        """Render events with ASCII icons and return plain text output."""
+        """Render events with ASCII icons and return plain text output.
+
+        NBSPs are normalized to regular spaces for easier comparison.
+        """
         module = get_module("events")
         assert module is not None
         theme = {
@@ -249,40 +255,41 @@ class TestEventsModuleWithAsciiIcons:
         result = module.render(inputs, theme)
         if result == "":
             return ""
-        return render_plain(result, width=width)
+        # Normalize NBSP to regular space for comparison
+        return render_plain(result, width=width).replace("\u00a0", " ")
 
     def test_empty_events_returns_empty_string(self):
         assert self._render_events([]) == ""
 
     def test_single_read_tool(self):
-        """Single tool with no context gets leading boundary space (mid-turn assumption)."""
+        """Single tool renders as a main run."""
         events: list[EventTuple] = [("PostToolUse", "Read", None, None)]
-        assert self._render_events(events, width=10) == "[ R ]"
+        assert self._render_events(events, width=10) == "[R ]"
 
     def test_single_edit_tool(self):
         events: list[EventTuple] = [("PostToolUse", "Edit", None, None)]
-        assert self._render_events(events, width=10) == "[ E ]"
+        assert self._render_events(events, width=10) == "[E ]"
 
     def test_user_prompt_submit(self):
         events: list[EventTuple] = [("UserPromptSubmit", None, None, None)]
-        # UserPromptSubmit: leading boundary + icon + trailing boundary
-        assert self._render_events(events, width=10) == "[ U  ]"
+        # UserPromptSubmit is a user run
+        assert self._render_events(events, width=10) == "[U ]"
 
     def test_stop_event(self):
-        """Stop event alone gets leading space (mid-turn) + trailing boundary."""
+        """Stop event alone is a main run."""
         events: list[EventTuple] = [("Stop", None, None, None)]
-        assert self._render_events(events, width=10) == "[ S  ]"
+        assert self._render_events(events, width=10) == "[S ]"
 
     def test_simple_turn_sequence(self):
-        """UserPromptSubmit -> Read -> Stop"""
+        """UserPromptSubmit -> Read -> Stop becomes user run + main run."""
         events: list[EventTuple] = [
             ("UserPromptSubmit", None, None, None),
             ("PostToolUse", "Read", None, None),
             ("Stop", None, None, None),
         ]
-        # U gets leading+trailing boundary, R gets spacing, S gets trailing boundary
+        # U is user run, R S is main run - uniform spacing within runs
         output = self._render_events(events, width=20)
-        assert output == "[ U   R S  ]"
+        assert output == "[U R S ]"
 
     def test_multiple_tools_in_turn(self):
         """UserPromptSubmit -> Glob -> Read -> Read -> Stop"""
@@ -294,7 +301,7 @@ class TestEventsModuleWithAsciiIcons:
             ("Stop", None, None, None),
         ]
         output = self._render_events(events, width=25)
-        assert output == "[ U   G R R S  ]"
+        assert output == "[U G R R S ]"
 
     def test_subagent_sequence(self):
         """UserPromptSubmit -> SubagentStart -> Read -> SubagentStop -> Stop"""
@@ -306,32 +313,35 @@ class TestEventsModuleWithAsciiIcons:
             ("Stop", None, None, None),
         ]
         output = self._render_events(events, width=30)
-        assert output == "[ U   > R <  S  ]"
+        # user run (U) + main run with subagent markers (> R < S)
+        # Subagent events are part of the main run
+        assert output == "[U > R < S ]"
 
     def test_bash_git_command(self):
         """Bash with git command uses git icon."""
         events: list[EventTuple] = [("PostToolUse", "Bash", None, "git status")]
-        assert self._render_events(events, width=10) == "[ g ]"
+        assert self._render_events(events, width=10) == "[g ]"
 
     def test_bash_pytest_command(self):
         """Bash with pytest command uses pytest icon."""
         events: list[EventTuple] = [("PostToolUse", "Bash", None, "pytest tests/")]
-        assert self._render_events(events, width=10) == "[ p ]"
+        assert self._render_events(events, width=10) == "[p ]"
 
     def test_bash_unknown_command_uses_default(self):
         """Bash with unknown command uses default bash icon."""
         events: list[EventTuple] = [("PostToolUse", "Bash", None, "echo hello")]
-        assert self._render_events(events, width=10) == "[ $ ]"
+        assert self._render_events(events, width=10) == "[$ ]"
 
     def test_explicit_interrupt(self):
-        """PostToolUseFailure with interrupt extra."""
+        """PostToolUseFailure with interrupt extra goes to user run."""
         events: list[EventTuple] = [
             ("UserPromptSubmit", None, None, None),
             ("PostToolUse", "Read", None, None),
             ("PostToolUseFailure", None, None, "interrupt"),
         ]
         output = self._render_events(events, width=20)
-        assert output == "[ U   R X  ]"
+        # user run (U) + main run (R) + user run (X)
+        assert output == "[U R X ]"
 
     def test_inferred_interrupt(self):
         """UserPromptSubmit without prior Stop infers interrupt."""
@@ -343,9 +353,8 @@ class TestEventsModuleWithAsciiIcons:
             ("Stop", None, None, None),
         ]
         output = self._render_events(events, width=25)
-        # Synthetic interrupt inserted before second UserPromptSubmit
-        # Interrupt is turn-end only (trailing boundary), not turn-start
-        assert output == "[ U   R X   U   S  ]"
+        # Synthetic interrupt inserted: user(U) + main(R) + user(X) + user(U) + main(S)
+        assert output == "[U R X U S ]"
 
     def test_skip_redundant_subagent_stop(self):
         """SubagentStop immediately after Stop is skipped."""
@@ -356,8 +365,8 @@ class TestEventsModuleWithAsciiIcons:
             ("SubagentStop", None, None, None),  # Should be skipped
         ]
         output = self._render_events(events, width=20)
-        # Only 3 segments: U, R, S (SubagentStop skipped)
-        assert output == "[ U   R S  ]"
+        # SubagentStop skipped: user(U) + main(R S)
+        assert output == "[U R S ]"
 
     def test_limit_truncates_events(self):
         """Limit parameter truncates older events."""
@@ -367,9 +376,9 @@ class TestEventsModuleWithAsciiIcons:
             ("PostToolUse", "Edit", None, None),
             ("PostToolUse", "Write", None, None),
         ]
-        # With limit=2, should only process last 2 events (mid-turn context)
+        # With limit=2, should only process last 2 events
         output = self._render_events(events, width=15, limit=2)
-        assert output == "[ E W ]"
+        assert output == "[E W ]"
 
     def test_two_complete_turns(self):
         """Two complete turns with different tools."""
@@ -382,21 +391,25 @@ class TestEventsModuleWithAsciiIcons:
             ("Stop", None, None, None),
         ]
         output = self._render_events(events, width=30)
-        assert output == "[ U   R S   U   E S  ]"
+        # user(U) + main(R S) + user(U) + main(E S)
+        assert output == "[U R S U E S ]"
 
 
 class TestEventToIcon:
     """Tests for _event_to_icon method with ASCII icons."""
 
     def _get_icon(self, event: str, tool: str | None, extra: str | None) -> str:
-        """Get the plain text icon for an event."""
+        """Get the plain text icon for an event.
+
+        NBSPs are normalized to regular spaces for easier comparison.
+        """
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
         text, _ = module._event_to_icon(
             event, tool, extra, ASCII_TOOL_ICONS, ASCII_EVENT_ICONS, ASCII_BASH_ICONS, {}
         )
-        return text.plain if text else ""
+        return text.plain.replace("\u00a0", " ") if text else ""
 
     def test_read_tool(self):
         assert self._get_icon("PostToolUse", "Read", None) == "R "
@@ -433,7 +446,8 @@ class TestEditWithLineCounts:
     """Tests for Edit events with line count bars."""
 
     def test_edit_with_additions_only(self):
-        from statusline.modules.events import EventsModule
+        """Edit with only additions shows green bar + placeholder space."""
+        from statusline.modules.events import EventsModule, LINE_BARS
 
         module = EventsModule()
         text, width = module._event_to_icon(
@@ -441,11 +455,15 @@ class TestEditWithLineCounts:
         )
         assert text is not None
         plain = text.plain
-        # Should have edit icon + green bar
+        # Should have edit icon + green bar + placeholder space for deletions
         assert "▄" in plain  # 10 lines -> ▄
+        # Always 2 bar positions: icon(2) + bars(2) = 4
+        # No trailing NBSP needed for Edit with bars
+        assert width == 4, f"Expected width 4 but got {width}"
 
     def test_edit_with_deletions_only(self):
-        from statusline.modules.events import EventsModule
+        """Edit with only deletions shows placeholder space + red bar."""
+        from statusline.modules.events import EventsModule, LINE_BARS
 
         module = EventsModule()
         text, width = module._event_to_icon(
@@ -453,8 +471,32 @@ class TestEditWithLineCounts:
         )
         assert text is not None
         plain = text.plain
-        # Should have edit icon + red bar
+        # Should have edit icon + placeholder space + red bar
         assert "▆" in plain  # 50 lines -> ▆
+        # Always 2 bar positions: icon(2) + bars(2) = 4
+        assert width == 4, f"Expected width 4 but got {width}"
+
+    def test_edit_bars_always_two_positions(self):
+        """Edit bars always occupy 2 character positions."""
+        from statusline.modules.events import EventsModule
+
+        module = EventsModule()
+
+        # +5-2: both bars visible
+        text1, width1 = module._event_to_icon(
+            "PostToolUse", "Edit", "+5-2", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
+        )
+        # +10-0: addition bar + placeholder
+        text2, width2 = module._event_to_icon(
+            "PostToolUse", "Edit", "+10-0", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
+        )
+        # +0-10: placeholder + deletion bar
+        text3, width3 = module._event_to_icon(
+            "PostToolUse", "Edit", "+0-10", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
+        )
+
+        # All should have same width: icon(2) + bars(2) = 4
+        assert width1 == width2 == width3 == 4, f"Widths differ: {width1}, {width2}, {width3}"
 
     def test_edit_with_both(self):
         from statusline.modules.events import EventsModule
@@ -468,6 +510,66 @@ class TestEditWithLineCounts:
         # Should have both bars
         assert "▇" in plain  # 100 lines -> ▇
         assert "▃" in plain  # 5 lines -> ▃
+
+    def test_edit_bars_have_edit_bar_background(self):
+        """Edit bars should have edit_bar background, not segment background."""
+        from statusline.modules.events import EventsModule
+
+        module = EventsModule()
+        backgrounds = {"edit_bar": "#4c4d4e"}
+        text, width = module._event_to_icon(
+            "PostToolUse", "Edit", "+5-2", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, backgrounds
+        )
+        assert text is not None
+
+        # Check that the bar spans have the edit_bar background
+        # Rich stores styles, we need to check the markup or spans
+        markup = text.markup
+        # The bars should have "on #4c4d4e" in their style
+        assert "on #4c4d4e" in markup, f"Bars missing edit_bar background: {markup}"
+
+    def test_edit_bars_keep_background_after_segment_styling(self):
+        """When segment background is applied, bars should keep their own background."""
+        from statusline.modules.events import EventsModule
+        from statusline.input import EventsInfo, EventTuple
+        from statusline.modules import get_module
+        from rich.segment import Segment
+
+        # Render a full event with Edit in a segment
+        events: list[EventTuple] = [
+            ("PostToolUse", "Edit", None, "+5-2"),
+        ]
+        module = get_module("events")
+        assert module is not None
+
+        # Render with a segment background
+        result = module.render(
+            {"events": EventsInfo(events=events)},
+            {"backgrounds": {"main": "on #2a3a2a", "edit_bar": "#abcdef"}},
+        )
+
+        # Get the segments and check bar backgrounds
+        from rich.console import Console
+        console = Console(force_terminal=True, width=80)
+
+        class FakeOptions:
+            max_width = 80
+
+        segments = list(result.__rich_console__(console, FakeOptions()))
+
+        # The bar background should be #abcdef (171, 205, 239), not main bg #2a3a2a
+        # Check that we have segments with the edit_bar background color
+        found_edit_bar_bg = False
+        for seg in segments:
+            if seg.style and seg.style.bgcolor:
+                # Check if bgcolor has the RGB values for #abcdef
+                if hasattr(seg.style.bgcolor, 'triplet'):
+                    triplet = seg.style.bgcolor.triplet
+                    if triplet.red == 171 and triplet.green == 205 and triplet.blue == 239:
+                        found_edit_bar_bg = True
+                        break
+
+        assert found_edit_bar_bg, f"Edit bar background not found in segments: {segments}"
 
 
 class TestEventsInfoProvider:

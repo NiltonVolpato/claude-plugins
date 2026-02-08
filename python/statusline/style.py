@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from io import StringIO
 
 from rich.console import Console, RenderableType
@@ -56,7 +57,5 @@ def render_to_ansi(
         width=width,
     )
 
-    with console.capture() as capture:
-        console.print(content, end="", highlight=False, soft_wrap=True)
-
-    return capture.get().rstrip("\n")
+    console.print(content, end="", highlight=False, soft_wrap=True)
+    return console.file.getvalue().rstrip("\n")

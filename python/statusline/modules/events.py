@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
 
 from rich.cells import cell_len
 from rich.measure import Measurement
@@ -13,35 +14,37 @@ from statusline.config import ThemeVars
 from statusline.input import EventsInfo, EventTuple, InputModel
 from statusline.modules import Module, register
 
-# Default icon mappings (nerd font icons with trailing space for proper width)
+# Default icon mappings (nerd font icons with trailing NBSP for proper width)
+# The \u00a0 (non-breaking space) is part of the icon, compensating for
+# nerd font glyphs that are wider than 1 terminal cell.
 TOOL_ICONS = {
-    "Bash": "[bright_black]\uea85[/] ",  # cod-terminal
-    "Edit": "[yellow]\uf4d2[/] ",  # fa-edit (pencil)
-    "Write": "[green]\uea7f[/] ",  # fa-edit
-    "Read": "[cyan]\U000f0dca[/] ",  # cod-eye
-    "Glob": "[blue]\uf002[/] ",  # cod-search
-    "Grep": "[blue]\uf002[/] ",  # cod-search
-    "Task": "[magenta]\ueab3[/] ",  # cod-checklist
-    "WebFetch": "[cyan]\ueb01[/] ",  # cod-globe
-    "WebSearch": "[cyan]\ueb01[/] ",  # cod-globe
+    "Bash": "[bright_black]\uea85[/]\u00a0",  # cod-terminal
+    "Edit": "[yellow]\uf4d2[/]\u00a0",  # fa-edit (pencil)
+    "Write": "[green]\uea7f[/]\u00a0",  # fa-edit
+    "Read": "[cyan]\U000f0dca[/]\u00a0",  # cod-eye
+    "Glob": "[blue]\uf002[/]\u00a0",  # cod-search
+    "Grep": "[blue]\uf002[/]\u00a0",  # cod-search
+    "Task": "[magenta]\ueab3[/]\u00a0",  # cod-checklist
+    "WebFetch": "[cyan]\ueb01[/]\u00a0",  # cod-globe
+    "WebSearch": "[cyan]\ueb01[/]\u00a0",  # cod-globe
 }
 
 # Bash command-specific icons (extra field contains first word of command)
 BASH_ICONS = {
-    "git": "[#f05032]\ue702[/] ",  # dev-git (git orange)
-    "cargo": "[#dea584]\ue7a8[/] ",  # dev-rust (rust orange)
-    "uv": "[green]\ue73c[/] ",  # dev-python
-    "python": "[green]\ue73c[/] ",  # dev-python
-    "python3": "[green]\ue73c[/] ",  # dev-python
-    "pytest": "[yellow]\ue87a[/] ",  # dev-pytest
-    "npm": "[red]\ue71e[/] ",  # dev-npm
-    "node": "[green]\ue71e[/] ",  # dev-npm (node green)
-    "docker": "[#2496ed]\ue7b0[/] ",  # dev-docker (docker blue)
-    "make": "[bright_black]\uf0ad[/] ",  # fa-wrench
-    "sqlite3": "[blue]\uf472[/] ",  # cod-database
-    "sleep": "[yellow]\U000f04b2[/] ",
-    "chatterbox": "[cyan]\U000f050a[/] ",
-    "rm": "[red]\U000f01b4[/] ",
+    "git": "[#f05032]\ue702[/]\u00a0",  # dev-git (git orange)
+    "cargo": "[#dea584]\ue7a8[/]\u00a0",  # dev-rust (rust orange)
+    "uv": "[green]\ue73c[/]\u00a0",  # dev-python
+    "python": "[green]\ue73c[/]\u00a0",  # dev-python
+    "python3": "[green]\ue73c[/]\u00a0",  # dev-python
+    "pytest": "[yellow]\ue87a[/]\u00a0",  # dev-pytest
+    "npm": "[red]\ue71e[/]\u00a0",  # dev-npm
+    "node": "[green]\ue71e[/]\u00a0",  # dev-npm (node green)
+    "docker": "[#2496ed]\ue7b0[/]\u00a0",  # dev-docker (docker blue)
+    "make": "[bright_black]\uf0ad[/]\u00a0",  # fa-wrench
+    "sqlite3": "[blue]\uf472[/]\u00a0",  # cod-database
+    "sleep": "[yellow]\U000f04b2[/]\u00a0",
+    "chatterbox": "[cyan]\U000f050a[/]\u00a0",
+    "rm": "[red]\U000f01b4[/]\u00a0",
 }
 
 # Bar characters for line counts (logarithmic scale)
@@ -50,9 +53,9 @@ LINE_THRESHOLDS = [1, 6, 16, 31, 51, 101, 201]
 
 
 def _lines_to_bar(count: int) -> str:
-    """Convert line count to a bar character."""
+    """Convert line count to a bar character (\u00a0 if 0)."""
     if count <= 0:
-        return ""
+        return "\u00a0"  # Non-breaking space: invisible bar
     for i, threshold in enumerate(LINE_THRESHOLDS):
         if count < threshold:
             return LINE_BARS[i]
@@ -60,18 +63,17 @@ def _lines_to_bar(count: int) -> str:
 
 
 # NOTE: Many Nerd Font icons are wider than 1 cell (1.5-2 chars) and overflow
-# into the next character space. The trailing space in icon definitions is
-# INTENTIONAL - it's part of the icon's visual width, not inter-icon spacing.
-# Do not remove these spaces thinking they're redundant padding.
+# into the next character space. The trailing \u00a0 (NBSP) in icon definitions
+# compensates for this - it's part of the icon's visual width, not spacing.
 EVENT_ICONS = {
     "PostToolUse": None,  # Uses TOOL_ICONS
     "PostToolUseFailure": None,  # Check extra for "interrupt"
-    "SubagentStart": "[bold blue]\U000f0443[/] ",  # cod-run-all (play arrow)
-    "SubagentStop": "[bold blue]\U000f0441[/] ",  # fa-stop
-    "UserPromptSubmit": "[bright_white]\uf007[/] ",  # fa-user
-    "Stop": "[green]\uf4f0[/] ",  # nf-md-check_circle (final stop)
-    "StopUndone": "[yellow]\uf0e2[/] ",  # fa-undo (stop that got cancelled by hook)
-    "Interrupt": "[red]\ue009[/] ",  # interrupted/cancelled (synthetic)
+    "SubagentStart": "[bold blue]\U000f0443[/]\u00a0",  # cod-run-all (play arrow)
+    "SubagentStop": "[bold blue]\U000f0441[/]\u00a0",  # fa-stop
+    "UserPromptSubmit": "[bright_white]\uf007[/]\u00a0",  # fa-user
+    "Stop": "[green]\uf4f0[/]\u00a0",  # nf-md-check_circle (final stop)
+    "StopUndone": "[yellow]\uf0e2[/]\u00a0",  # fa-undo (stop that got cancelled by hook)
+    "Interrupt": "[red]\ue009[/]\u00a0",  # interrupted/cancelled (synthetic)
 }
 
 
@@ -84,9 +86,128 @@ class ProcessedEvent:
     agent_id: str | None
     extra: str | None
     effective_event: str  # "StopUndone", "Interrupt", or same as event
-    is_turn_start: bool
-    is_turn_end: bool
-    in_subagent: bool
+
+
+RunContext = Literal["main", "user", "subagent"]
+
+
+@dataclass
+class Run:
+    """A contiguous sequence of events in the same context."""
+
+    context: RunContext
+    events: list[ProcessedEvent] = field(default_factory=list)
+    agent_id: str | None = None  # For subagent runs
+
+
+def group_into_runs(events: list[EventTuple]) -> list[Run]:
+    """Group events into runs by context.
+
+    A run is a contiguous sequence of events in the same context:
+    - "user": UserPromptSubmit, Interrupt events
+    - "main": All other events (tool uses, Stop, SubagentStart/Stop)
+
+    Subagent events are NOT separate runs - they're part of the main run.
+    The SubagentStart/SubagentStop events within the main run provide
+    visual markers (< >) to show which tools were invoked by subagents.
+
+    Returns a list of Run objects ready for rendering.
+    """
+    if not events:
+        return []
+
+    runs: list[Run] = []
+    current_run: Run | None = None
+
+    # Track state for StopUndone detection and interrupt inference
+    in_turn = events[0][0] not in ("UserPromptSubmit", None)
+    prev_event = None
+
+    for i, (event, tool, agent_id, extra) in enumerate(events):
+        # Skip redundant SubagentStop after Stop
+        if event == "SubagentStop" and prev_event == "Stop":
+            prev_event = event
+            continue
+
+        # Detect StopUndone: Stop followed by tool use
+        effective_event = event
+        if event == "Stop":
+            look_idx = i + 1
+            while look_idx < len(events) and events[look_idx][0] == "SubagentStop":
+                look_idx += 1
+            if look_idx < len(events):
+                next_event = events[look_idx][0]
+                if next_event not in ("UserPromptSubmit", "Stop"):
+                    effective_event = "StopUndone"
+
+        # Infer interrupt: UserPromptSubmit while in a turn
+        if event == "UserPromptSubmit" and in_turn:
+            # First, append the current run (if any) before adding interrupt
+            if current_run is not None:
+                runs.append(current_run)
+                current_run = None
+            # Add synthetic interrupt as a user run
+            interrupt_pe = ProcessedEvent(
+                event="Interrupt",
+                tool=None,
+                agent_id=None,
+                extra=None,
+                effective_event="Interrupt",
+            )
+            interrupt_run = Run(context="user", events=[interrupt_pe])
+            runs.append(interrupt_run)
+            in_turn = False
+
+        # Determine context for this event
+        if event == "UserPromptSubmit":
+            context: RunContext = "user"
+        elif event == "Interrupt" or (
+            event == "PostToolUseFailure" and extra == "interrupt"
+        ):
+            context = "user"
+        else:
+            # Everything else is main (including subagent events)
+            context = "main"
+
+        # Create ProcessedEvent
+        pe = ProcessedEvent(
+            event=event,
+            tool=tool,
+            agent_id=agent_id,
+            extra=extra,
+            effective_event=effective_event,
+        )
+
+        # Should we start a new run?
+        start_new_run = False
+        if current_run is None:
+            start_new_run = True
+        elif context != current_run.context:
+            start_new_run = True
+
+        if start_new_run:
+            if current_run is not None:
+                runs.append(current_run)
+            current_run = Run(
+                context=context,
+                events=[pe],
+            )
+        else:
+            current_run.events.append(pe)
+
+        # Update state
+        if event == "UserPromptSubmit":
+            in_turn = True
+        elif event == "Stop":
+            in_turn = False
+
+        prev_event = event
+
+    # Don't forget the last run
+    if current_run is not None:
+        runs.append(current_run)
+
+    return runs
 
 
 def preprocess_events(events: list[EventTuple]) -> list[ProcessedEvent]:
@@ -95,7 +216,6 @@ def preprocess_events(events: list[EventTuple]) -> list[ProcessedEvent]:
     Pass 1: Classification and state tracking.
     - Detects StopUndone (Stop followed by tool use)
     - Detects Interrupts (UserPromptSubmit while in turn)
-    - Marks turn boundaries and subagent context
     """
     if not events:
         return []
@@ -105,7 +225,6 @@ def preprocess_events(events: list[EventTuple]) -> list[ProcessedEvent]:
     # Initial state: if first event isn't UserPromptSubmit, we're mid-turn
     first_event = events[0][0]
     in_turn = first_event not in ("UserPromptSubmit", None)
-    is_first_in_turn = in_turn
     subagent_depth = 0
     prev_event = None
 
@@ -127,9 +246,6 @@ def preprocess_events(events: list[EventTuple]) -> list[ProcessedEvent]:
                     agent_id=None,
                     extra=None,
                     effective_event="Interrupt",
-                    is_turn_start=False,
-                    is_turn_end=True,
-                    in_subagent=False,
                 )
             )
             in_turn = False
@@ -145,14 +261,6 @@ def preprocess_events(events: list[EventTuple]) -> list[ProcessedEvent]:
                 if next_event not in ("UserPromptSubmit", "Stop"):
                     effective_event = "StopUndone"
 
-        # Determine turn boundary flags
-        is_turn_start = is_first_in_turn or event == "SubagentStart"
-        in_subagent_now = subagent_depth > 0 or event == "SubagentStart"
-        is_turn_end = (
-            effective_event in ("Stop", "SubagentStop", "UserPromptSubmit")
-            or is_interrupt
-        )
-
         result.append(
             ProcessedEvent(
                 event=event,
@@ -160,26 +268,18 @@ def preprocess_events(events: list[EventTuple]) -> list[ProcessedEvent]:
                 agent_id=agent_id,
                 extra=extra,
                 effective_event=effective_event,
-                is_turn_start=is_turn_start,
-                is_turn_end=is_turn_end,
-                in_subagent=in_subagent_now,
             )
         )
 
         # Update state for next iteration
         if event == "UserPromptSubmit":
             in_turn = True
-            is_first_in_turn = True
         elif (event == "Stop" or is_interrupt) and subagent_depth == 0:
             in_turn = False
-            is_first_in_turn = False
         elif event == "SubagentStart":
             subagent_depth += 1
-            is_first_in_turn = False
         elif event == "SubagentStop":
             subagent_depth = max(0, subagent_depth - 1)
-        else:
-            is_first_in_turn = False
 
         prev_event = event
 
@@ -233,7 +333,11 @@ class ExpandableEvents:
         if remaining > 0 and overflow_seg is not None:
             # Crop the overflow segment to show only rightmost `remaining` characters
             # This preserves styles from the cropped portion
-            partial_text = overflow_seg.text[-remaining:]
+            if overflow_seg.width > remaining:
+                partial_text = overflow_seg.text[-remaining:]
+            # If segment fits in remaining space, just include it fully
+            elif self.expand:
+                partial_text = Text(" " * (remaining - overflow_seg.width))
         elif self.expand and remaining > 0:
             # Normal padding when expanding (events align right)
             partial_text = Text(" " * remaining)
@@ -267,6 +371,13 @@ class EventsModule(Module):
     name = "events"
     __inputs__ = [EventsInfo]
 
+    # Default brackets for each context (used in bracket mode)
+    DEFAULT_BRACKETS: dict[RunContext, list[str]] = {
+        "main": ["[", "]"],
+        "user": ["{", "}"],
+        "subagent": ["<", ">"],
+    }
+
     def render(
         self,
         inputs: dict[str, InputModel],
@@ -283,77 +394,103 @@ class EventsModule(Module):
         limit = int(limit_val) if isinstance(limit_val, (int, str)) else 30
         raw_events = events_info.events if expand else events_info.events[-limit:]
 
-        # Pass 1: Pre-process events
-        events = preprocess_events(raw_events)
+        # Group events into runs
+        runs = group_into_runs(raw_events)
+        if not runs:
+            return ""
 
         # Get icon mappings from theme or use defaults
         tool_icons = theme_vars.get("tool_icons", TOOL_ICONS)
         event_icons = theme_vars.get("event_icons", EVENT_ICONS)
         bash_icons = theme_vars.get("bash_icons", BASH_ICONS)
 
-        # Configurable spacing
-        spacing_val = theme_vars.get("spacing", 1)
-        spacing = int(spacing_val) if isinstance(spacing_val, (int, str)) else 1
+        # Configurable spacing (uniform within runs)
+        spacing_val = theme_vars.get("spacing", 0)
+        spacing = int(spacing_val) if isinstance(spacing_val, (int, str)) else 0
 
         # Background styles (configurable via theme_vars)
         backgrounds = theme_vars.get("backgrounds", {})
-        turn_bg = backgrounds.get("turn", "on #2a3a2a")  # greenish for main agent
-        subagent_bg = backgrounds.get("subagent", "on #2a2a3a")  # blue-ish
-        user_bg = backgrounds.get("user", "on #3a2a2a")  # warm/reddish
+        context_bg: dict[RunContext, str] = {
+            "main": backgrounds.get("main", "on #2a3a2a"),  # greenish
+            "user": backgrounds.get("user", "on #3a2a2a"),  # warm/reddish
+            "subagent": backgrounds.get("subagent", "on #2a2a3a"),  # blue-ish
+        }
 
-        # Pass 2: Build segments (simple iteration, no state tracking)
+        # Bracket mode: show brackets around each run
+        bracket_mode = theme_vars.get("brackets", False)
+        brackets_config = theme_vars.get("run_brackets", self.DEFAULT_BRACKETS)
+
+        # Build segments (one per run)
+        # Spacing between icons is `spacing` spaces. At run boundaries,
+        # we need an even number to split symmetrically.
+        # Boundary spacing is the next even number >= spacing.
+        # This ensures we can split it evenly: boundary_spacing // 2 on each side.
         segments: list[EventSegment] = []
-        prev_was_turn_end = False
+        boundary_spacing = spacing + (spacing % 2)  # Round up to next even number
+        half_boundary = boundary_spacing // 2
 
-        for pe in events:
-            icon_text, icon_width = self._event_to_icon(
-                pe.effective_event,
-                pe.tool,
-                pe.extra,
-                tool_icons,
-                event_icons,
-                bash_icons,
-                backgrounds,
-            )
-            if not icon_text:
-                continue
+        for run_idx, run in enumerate(runs):
+            bg = context_bg.get(run.context, "")
+            brackets = brackets_config.get(run.context, ["", ""])
+            open_bracket, close_bracket = brackets if bracket_mode else ["", ""]
 
-            # Determine background based on event type
-            if pe.event == "UserPromptSubmit" or pe.event == "Interrupt":
-                bg = user_bg
-            elif pe.event == "SubagentStop" or pe.in_subagent:
-                bg = subagent_bg
-            else:
-                bg = turn_bg
-
-            # Build segment
+            # Build run content
             text = Text()
-            width = icon_width
+            width = 0
 
-            # Boundary events get 1 space padding before
-            is_boundary = pe.is_turn_start or pe.event == "UserPromptSubmit"
-            if is_boundary:
-                text.append(" ", style=bg)
-                width += 1
-            elif segments and not prev_was_turn_end:
-                # Normal spacing from previous icon
-                prefix = " " * spacing
-                text.append(prefix, style=bg if bg else None)
-                width += len(prefix)
+            # Opening bracket
+            if open_bracket:
+                text.append(open_bracket, style=bg)
+                width += cell_len(open_bracket)
 
-            # Icon with background
-            if bg:
-                icon_text.stylize(bg)
-            text.append_text(icon_text)
+            # Spacing at start of run (second half from previous run boundary)
+            # Add for all runs except the first one (run_idx 0)
+            # The ExpandableEvents renders segments in reverse order, so the last run is rendered first
+            if run_idx > 0 and half_boundary > 0:
+                text.append(" " * half_boundary, style=bg)
+                width += half_boundary
 
-            # Trailing boundary padding
-            if pe.is_turn_end:
-                text.append(" ", style=bg)
-                width += 1
+            # Render each event in the run
+            first_in_run = True
+            for pe in run.events:
+                icon_text, icon_width = self._event_to_icon(
+                    pe.effective_event,
+                    pe.tool,
+                    pe.extra,
+                    tool_icons,
+                    event_icons,
+                    bash_icons,
+                    backgrounds,
+                    segment_bg=bg,
+                )
+                if not icon_text:
+                    continue
 
-            segments.append(EventSegment(text, width))
-            prev_was_turn_end = pe.is_turn_end
+                # Spacing before icon (except first in run)
+                if not first_in_run and spacing > 0:
+                    text.append(" " * spacing, style=bg)
+                    width += spacing
 
+                text.append_text(icon_text)
+                width += icon_width
+                first_in_run = False
+
+            # Spacing at end of run (first half from next run boundary)
+            # Add for all runs except the first one (run_idx 0)
+            # The first run will be rendered last and has no preceding boundary
+            if run_idx > 0 and half_boundary > 0:
+                text.append(" " * half_boundary, style=bg)
+                width += half_boundary
+
+            # Closing bracket
+            if close_bracket:
+                text.append(close_bracket, style=bg)
+                width += cell_len(close_bracket)
+
+            if width > 0:  # Only add non-empty runs
+                segments.append(EventSegment(text, width))
+
+        # Outer frame brackets
         left = str(theme_vars.get("left", "["))
         right = str(theme_vars.get("right", "]"))
         return ExpandableEvents(segments, expand=expand, left=left, right=right)
@@ -367,13 +504,21 @@ class EventsModule(Module):
         event_icons: dict,
         bash_icons: dict,
         backgrounds: dict,
+        segment_bg: str | None = None,
     ) -> tuple[Text | None, int]:
-        """Convert an event to its styled Text representation and display width."""
+        """Convert an event to its styled Text representation and display width.
+
+        Args:
+            segment_bg: Background style to apply to the icon. For Edit with bars,
+                        this is applied to the icon but not the bars.
+        """
         # PostToolUseFailure with interrupt flag -> show as Interrupt
         if event == "PostToolUseFailure" and extra == "interrupt":
             icon = event_icons.get("Interrupt", "")
             if icon:
                 text = Text.from_markup(icon)
+                if segment_bg:
+                    text.stylize(segment_bg)
                 return text, text.cell_len
             return None, 0
 
@@ -382,12 +527,16 @@ class EventsModule(Module):
             # For Bash, check if there's a command-specific icon
             if tool == "Bash" and extra:
                 # Get first word and strip path prefix (e.g., /usr/bin/git -> git)
-                first_word = extra.split()[0] if extra else ""
-                cmd = first_word.split("/")[-1]
-                if cmd in bash_icons:
-                    icon = bash_icons[cmd]
-                    text = Text.from_markup(icon)
-                    return text, text.cell_len
+                words = extra.split()
+                if words:
+                    first_word = words[0]
+                    cmd = first_word.split("/")[-1]
+                    if cmd in bash_icons:
+                        icon = bash_icons[cmd]
+                        text = Text.from_markup(icon)
+                        if segment_bg:
+                            text.stylize(segment_bg)
+                        return text, text.cell_len
             # For Edit, show line change bars (Write just shows icon)
             if tool == "Edit" and extra and extra.startswith("+"):
                 base_icon = tool_icons.get(tool, "✏")
@@ -398,26 +547,26 @@ class EventsModule(Module):
                     removed = int(parts[1]) if len(parts) > 1 and parts[1] else 0
                     add_bar = _lines_to_bar(added)
                     rem_bar = _lines_to_bar(removed)
-                    if add_bar or rem_bar:
-                        text = Text.from_markup(base_icon)
-                        width = text.cell_len
-                        bar_bg = backgrounds.get("edit_bar", "#4c4d4e")
-                        if add_bar:
-                            text.append(add_bar, style=f"green on {bar_bg}")
-                            width += cell_len(add_bar)
-                        if rem_bar:
-                            text.append(rem_bar, style=f"red on {bar_bg}")
-                            width += cell_len(rem_bar)
-                        return text, width
+                    # Always show 2 bar positions (additions + deletions)
+                    # _lines_to_bar returns NBSP for 0 (invisible bar)
+                    text = Text.from_markup(base_icon)
+                    if segment_bg:
+                        text.stylize(segment_bg)
+                    bar_bg = backgrounds.get("edit_bar", "#4c4d4e")
+                    text.append(add_bar, style=f"green on {bar_bg}")
+                    text.append(rem_bar, style=f"red on {bar_bg}")
+                    return text, text.cell_len
                 except (ValueError, IndexError):
                     pass
-                text = Text.from_markup(base_icon)
-                return text, text.cell_len
             icon = tool_icons.get(tool, "•")
             text = Text.from_markup(icon)
+            if segment_bg:
+                text.stylize(segment_bg)
             return text, text.cell_len
         icon = event_icons.get(event, "")
         if icon:
             text = Text.from_markup(icon)
+            if segment_bg:
+                text.stylize(segment_bg)
             return text, text.cell_len
         return None, 0

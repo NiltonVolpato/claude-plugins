@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from statusline.config import Config, ModuleConfig, load_config
 from statusline.errors import StatuslineError
 from statusline.input import (

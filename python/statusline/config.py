@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from statusline.errors import report_error
 
-type ThemeVars = dict[str, str | int | ThemeVars]
+type ThemeVars = dict[str, list[str] | str | int | ThemeVars]
 
 CONFIG_PATH = Path.home() / ".claude" / "statusline.toml"
 

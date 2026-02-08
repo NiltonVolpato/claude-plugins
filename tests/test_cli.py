@@ -178,7 +178,7 @@ class TestCLIConfig:
         assert "Run 'statusline preview'" in result.stdout
 
 
-class TestEvents:
+class TestCLIEvents:
     def test_preview_events(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write("""\
@@ -186,20 +186,21 @@ class TestEvents:
 spacing = 2
 limit = 200
 brackets = true
+expand = true
 left = "["
 right = "]"
 
 # Tool icons (nerd font icons with trailing NBSP for proper width)
 [modules.events.themes.fallback.tool_icons]
-Bash = "[bright_black]$[/]"      # cod-terminal
-Edit = "[yellow]E[/]"             # fa-edit (pencil)
-Write = "[green]W[/]"             # fa-edit
-Read = "[cyan]R[/]"           # cod-eye
-Glob = "[blue]G[/]"               # cod-search
-Grep = "[blue]?[/]"               # cod-search
-Task = "[magenta]T[/]"            # cod-checklist
-WebFetch = "[cyan]@[/]"           # cod-globe
-WebSearch = "[cyan]@[/]"          # cod-globe
+Bash = "[bright_black]$[/]"
+Edit = "[yellow]E[/]"
+Write = "[green]W[/]"
+Read = "[cyan]R[/]"
+Glob = "[blue]G[/]"
+Grep = "[blue]?[/]"
+Task = "[magenta]T[/]"
+WebFetch = "[cyan]@[/]"
+WebSearch = "[cyan]@[/]"
 
 # Bash command-specific icons
 [modules.events.themes.fallback.bash_icons]
