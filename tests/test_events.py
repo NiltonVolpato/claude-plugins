@@ -344,7 +344,8 @@ class TestEventsModuleWithAsciiIcons:
         ]
         output = self._render_events(events, width=25)
         # Synthetic interrupt inserted before second UserPromptSubmit
-        assert output == "[ U   R  X   U   S  ]"
+        # Interrupt is turn-end only (trailing boundary), not turn-start
+        assert output == "[ U   R X   U   S  ]"
 
     def test_skip_redundant_subagent_stop(self):
         """SubagentStop immediately after Stop is skipped."""

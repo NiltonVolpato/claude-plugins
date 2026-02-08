@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from rich.cells import cell_len
 from rich.measure import Measurement
 from rich.segment import Segment
 from rich.text import Text
 
 from statusline.config import ThemeVars
-from statusline.input import EventsInfo, InputModel
+from statusline.input import EventsInfo, EventTuple, InputModel
 from statusline.modules import Module, register
 
 # Default icon mappings (nerd font icons with trailing space for proper width)
@@ -71,6 +73,117 @@ EVENT_ICONS = {
     "StopUndone": "[yellow]\uf0e2[/] ",  # fa-undo (stop that got cancelled by hook)
     "Interrupt": "[red]\ue009[/] ",  # interrupted/cancelled (synthetic)
 }
+
+
+@dataclass
+class ProcessedEvent:
+    """An event with pre-computed rendering properties."""
+
+    event: str  # Original event name
+    tool: str | None
+    agent_id: str | None
+    extra: str | None
+    effective_event: str  # "StopUndone", "Interrupt", or same as event
+    is_turn_start: bool
+    is_turn_end: bool
+    in_subagent: bool
+
+
+def preprocess_events(events: list[EventTuple]) -> list[ProcessedEvent]:
+    """Pre-process events to compute rendering properties.
+
+    Pass 1: Classification and state tracking.
+    - Detects StopUndone (Stop followed by tool use)
+    - Detects Interrupts (UserPromptSubmit while in turn)
+    - Marks turn boundaries and subagent context
+    """
+    if not events:
+        return []
+
+    result: list[ProcessedEvent] = []
+
+    # Initial state: if first event isn't UserPromptSubmit, we're mid-turn
+    first_event = events[0][0]
+    in_turn = first_event not in ("UserPromptSubmit", None)
+    is_first_in_turn = in_turn
+    subagent_depth = 0
+    prev_event = None
+
+    for i, (event, tool, agent_id, extra) in enumerate(events):
+        # Skip redundant SubagentStop after Stop
+        if event == "SubagentStop" and prev_event == "Stop":
+            prev_event = event
+            continue
+
+        is_interrupt = event == "PostToolUseFailure" and extra == "interrupt"
+
+        # Infer interrupt: UserPromptSubmit while in a turn at depth 0
+        if event == "UserPromptSubmit" and in_turn and subagent_depth == 0:
+            # Insert synthetic interrupt event
+            result.append(
+                ProcessedEvent(
+                    event="Interrupt",
+                    tool=None,
+                    agent_id=None,
+                    extra=None,
+                    effective_event="Interrupt",
+                    is_turn_start=False,
+                    is_turn_end=True,
+                    in_subagent=False,
+                )
+            )
+            in_turn = False
+
+        # Detect StopUndone: Stop followed by tool use (skip SubagentStop in lookahead)
+        effective_event = event
+        if event == "Stop":
+            look_idx = i + 1
+            while look_idx < len(events) and events[look_idx][0] == "SubagentStop":
+                look_idx += 1
+            if look_idx < len(events):
+                next_event = events[look_idx][0]
+                if next_event not in ("UserPromptSubmit", "Stop"):
+                    effective_event = "StopUndone"
+
+        # Determine turn boundary flags
+        is_turn_start = is_first_in_turn or event == "SubagentStart"
+        in_subagent_now = subagent_depth > 0 or event == "SubagentStart"
+        is_turn_end = (
+            effective_event in ("Stop", "SubagentStop", "UserPromptSubmit")
+            or is_interrupt
+        )
+
+        result.append(
+            ProcessedEvent(
+                event=event,
+                tool=tool,
+                agent_id=agent_id,
+                extra=extra,
+                effective_event=effective_event,
+                is_turn_start=is_turn_start,
+                is_turn_end=is_turn_end,
+                in_subagent=in_subagent_now,
+            )
+        )
+
+        # Update state for next iteration
+        if event == "UserPromptSubmit":
+            in_turn = True
+            is_first_in_turn = True
+        elif (event == "Stop" or is_interrupt) and subagent_depth == 0:
+            in_turn = False
+            is_first_in_turn = False
+        elif event == "SubagentStart":
+            subagent_depth += 1
+            is_first_in_turn = False
+        elif event == "SubagentStop":
+            subagent_depth = max(0, subagent_depth - 1)
+        else:
+            is_first_in_turn = False
+
+        prev_event = event
+
+    return result
 
 
 class EventSegment:
@@ -168,13 +281,14 @@ class EventsModule(Module):
         # Apply limit from theme when not expanding
         limit_val = theme_vars.get("limit", 30)
         limit = int(limit_val) if isinstance(limit_val, (int, str)) else 30
-        events = events_info.events if expand else events_info.events[-limit:]
+        raw_events = events_info.events if expand else events_info.events[-limit:]
+
+        # Pass 1: Pre-process events
+        events = preprocess_events(raw_events)
 
         # Get icon mappings from theme or use defaults
         tool_icons = theme_vars.get("tool_icons", TOOL_ICONS)
         event_icons = theme_vars.get("event_icons", EVENT_ICONS)
-
-        # Get bash command icons from theme or use defaults
         bash_icons = theme_vars.get("bash_icons", BASH_ICONS)
 
         # Configurable spacing
@@ -187,129 +301,58 @@ class EventsModule(Module):
         subagent_bg = backgrounds.get("subagent", "on #2a2a3a")  # blue-ish
         user_bg = backgrounds.get("user", "on #3a2a2a")  # warm/reddish
 
-        # Build segments with spacing
-        # State: in_turn means we're inside an agent turn (after UserPromptSubmit, until Stop)
+        # Pass 2: Build segments (simple iteration, no state tracking)
         segments: list[EventSegment] = []
-        # If first event isn't UserPromptSubmit, we're mid-turn (truncated from left)
-        first_event = events[0][0] if events else None
-        in_turn = first_event not in ("UserPromptSubmit", None)
-        is_first_in_turn = in_turn  # Treat first event as turn start if mid-turn
-        subagent_depth = 0
-
-        prev_event = None
         prev_was_turn_end = False
-        for i, (event, tool, agent_id, extra) in enumerate(events):
-            # Skip SubagentStop if it immediately follows Stop (redundant main agent ending)
-            if event == "SubagentStop" and prev_event == "Stop":
-                prev_event = event
-                continue
 
-            # Detect interrupt: PostToolUseFailure with extra="interrupt"
-            is_interrupt = event == "PostToolUseFailure" and extra == "interrupt"
-
-            # Infer interrupt: UserPromptSubmit while still in a turn means previous was interrupted
-            if event == "UserPromptSubmit" and in_turn and subagent_depth == 0:
-                # Insert synthetic interrupt icon with user background (user caused the interrupt)
-                interrupt_icon = event_icons.get("Interrupt", "")
-                if interrupt_icon:
-                    int_text = Text.from_markup(interrupt_icon)
-                    int_width = int_text.cell_len
-                    # Build segment with user background and symmetric boundary
-                    seg_text = Text()
-                    seg_text.append(" ", style=user_bg)  # leading boundary
-                    int_text.stylize(user_bg)
-                    seg_text.append_text(int_text)
-                    seg_text.append(" ", style=user_bg)  # trailing boundary
-                    segments.append(EventSegment(seg_text, 1 + int_width + 1))
-                in_turn = False
-
-            # Detect if Stop was undone by looking ahead
-            # If Stop is followed by tool use (not turn boundary), it was cancelled
-            # Skip over SubagentStop when looking ahead (it often follows Stop)
-            effective_event = event
-            if event == "Stop":
-                look_idx = i + 1
-                # Skip SubagentStop events
-                while look_idx < len(events) and events[look_idx][0] == "SubagentStop":
-                    look_idx += 1
-                if look_idx < len(events):
-                    next_event = events[look_idx][0]
-                    # If next meaningful event is tool use, Stop was undone
-                    if next_event not in ("UserPromptSubmit", "Stop"):
-                        effective_event = "StopUndone"
-
+        for pe in events:
             icon_text, icon_width = self._event_to_icon(
-                effective_event,
-                tool,
-                extra,
+                pe.effective_event,
+                pe.tool,
+                pe.extra,
                 tool_icons,
                 event_icons,
                 bash_icons,
                 backgrounds,
             )
-            if icon_text:
-                # Determine background based on event type (not turn state)
-                in_subagent = subagent_depth > 0 or event == "SubagentStart"
+            if not icon_text:
+                continue
 
-                if event == "UserPromptSubmit":
-                    bg = user_bg
-                elif event == "SubagentStop" or in_subagent:
-                    bg = subagent_bg
-                else:
-                    # All other events (tools, Stop) get turn background
-                    bg = turn_bg
+            # Determine background based on event type
+            if pe.event == "UserPromptSubmit" or pe.event == "Interrupt":
+                bg = user_bg
+            elif pe.event == "SubagentStop" or pe.in_subagent:
+                bg = subagent_bg
+            else:
+                bg = turn_bg
 
-                # Build segment
-                text = Text()
-                width = icon_width
+            # Build segment
+            text = Text()
+            width = icon_width
 
-                # Boundary events get 1 space padding before and after (symmetric)
-                is_turn_start = is_first_in_turn or event == "SubagentStart"
-                is_boundary = is_turn_start or event == "UserPromptSubmit"
+            # Boundary events get 1 space padding before
+            is_boundary = pe.is_turn_start or pe.event == "UserPromptSubmit"
+            if is_boundary:
+                text.append(" ", style=bg)
+                width += 1
+            elif segments and not prev_was_turn_end:
+                # Normal spacing from previous icon
+                prefix = " " * spacing
+                text.append(prefix, style=bg if bg else None)
+                width += len(prefix)
 
-                if is_boundary:
-                    text.append(" ", style=bg)
-                    width += 1
-                    is_first_in_turn = False
-                elif segments and not prev_was_turn_end:
-                    # Normal spacing from previous icon (skip if prev had boundary padding)
-                    prefix = " " * spacing
-                    if bg:
-                        text.append(prefix, style=bg)
-                    else:
-                        text.append(prefix)
-                    width += len(prefix)
+            # Icon with background
+            if bg:
+                icon_text.stylize(bg)
+            text.append_text(icon_text)
 
-                # Icon with background
-                if bg:
-                    icon_text.stylize(bg)
-                text.append_text(icon_text)
+            # Trailing boundary padding
+            if pe.is_turn_end:
+                text.append(" ", style=bg)
+                width += 1
 
-                # Trailing boundary padding: 1 space (symmetric with leading)
-                # Use effective_event so StopUndone doesn't get turn-end treatment
-                is_turn_end = (
-                    effective_event in ("Stop", "SubagentStop", "UserPromptSubmit")
-                    or is_interrupt
-                )
-                if is_turn_end:
-                    text.append(" ", style=bg)
-                    width += 1
-
-                segments.append(EventSegment(text, width))
-
-            # Update state after processing
-            if event == "UserPromptSubmit":
-                in_turn = True
-                is_first_in_turn = True
-            elif (event == "Stop" or is_interrupt) and subagent_depth == 0:
-                in_turn = False
-            elif event == "SubagentStart":
-                subagent_depth += 1
-            elif event == "SubagentStop":
-                subagent_depth = max(0, subagent_depth - 1)
-
-            prev_event = event
-            prev_was_turn_end = is_turn_end
+            segments.append(EventSegment(text, width))
+            prev_was_turn_end = pe.is_turn_end
 
         left = str(theme_vars.get("left", "["))
         right = str(theme_vars.get("right", "]"))
