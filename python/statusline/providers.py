@@ -7,6 +7,7 @@ StatuslineInput or compute it independently (e.g., via subprocess).
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import subprocess
 from abc import ABC, abstractmethod
@@ -199,8 +200,6 @@ class EventsInfoProvider(InputProvider):
 
     def _row_to_event(self, row: tuple) -> EventTuple:
         """Convert a raw database row to EventTuple, computing extra from JSON."""
-        import json
-
         event, tool, agent_id, raw_data = row
         extra = None
 

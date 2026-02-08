@@ -20,6 +20,7 @@ from statusline.config import (
     load_config,
 )
 from statusline.errors import StatuslineError, report_error
+from statusline.events_logger import log_event_from_stdin
 from statusline.input import get_sample_input, parse_input
 from statusline.modules import get_module
 from statusline.renderer import render_statusline
@@ -239,8 +240,6 @@ def install(
 @app.command(name="log-event", hidden=True)
 def log_event_cmd() -> None:
     """Log an event to the database (called by hooks)."""
-    from statusline.events_logger import log_event_from_stdin
-
     log_event_from_stdin()
 
 

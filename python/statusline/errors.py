@@ -6,6 +6,8 @@ from typing import NoReturn
 
 from rich.console import Console
 
+from statusline.style import render_to_ansi
+
 
 class StatuslineError(Exception):
     """Wrapper indicating the error was already reported to the user."""
@@ -15,8 +17,6 @@ class StatuslineError(Exception):
 
 def report_error(context: str, exc: Exception) -> NoReturn:
     """Print a friendly error message to stdout and raise StatuslineError."""
-    from statusline.style import render_to_ansi
-
     message = render_to_ansi(
         f"[red]statusline: {context}: {exc}\n"
         f"Run 'statusline preview' to see the full traceback.[/red]",
