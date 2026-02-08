@@ -86,3 +86,63 @@ themes.minimal.label = ""
 [modules.events]
 expand = true
 spacing = 2
+limit = 30
+left = "["
+right = "]"
+brackets = false
+
+# Background colors for each context
+[modules.events.backgrounds]
+main = "on #2a3a2a"
+user = "on #3a2a2a"
+subagent = "on #2a2a3a"
+edit_bar = "#4c4d4e"
+
+# Bracket styles for each run context
+[modules.events.run_brackets]
+main = ["[", "]"]
+user = ["{", "}"]
+subagent = ["<", ">"]
+
+# Tool icons (Rich markup with trailing NBSP)
+[modules.events.tool_icons]
+Bash = "[bright_black]\uea85[/]\u00a0"
+Edit = "[yellow]\uf4d2[/]\u00a0"
+Write = "[green]\uea7f[/]\u00a0"
+Read = "[cyan]\U000f0dca[/]\u00a0"
+Glob = "[blue]\uf002[/]\u00a0"
+Grep = "[blue]\uf002[/]\u00a0"
+Task = "[magenta]\ueab3[/]\u00a0"
+WebFetch = "[cyan]\ueb01[/]\u00a0"
+WebSearch = "[cyan]\ueb01[/]\u00a0"
+
+# Bash command-specific icons
+[modules.events.bash_icons]
+git = "[#f05032]\ue702[/]\u00a0"
+cargo = "[#dea584]\ue7a8[/]\u00a0"
+uv = "[green]\ue73c[/]\u00a0"
+python = "[green]\ue73c[/]\u00a0"
+python3 = "[green]\ue73c[/]\u00a0"
+pytest = "[yellow]\ue87a[/]\u00a0"
+npm = "[red]\ue71e[/]\u00a0"
+node = "[green]\ue71e[/]\u00a0"
+docker = "[#2496ed]\ue7b0[/]\u00a0"
+make = "[bright_black]\uf0ad[/]\u00a0"
+sqlite3 = "[blue]\uf472[/]\u00a0"
+sleep = "[yellow]\U000f04b2[/]\u00a0"
+chatterbox = "[cyan]\U000f050a[/]\u00a0"
+rm = "[red]\U000f01b4[/]\u00a0"
+
+# Event icons
+[modules.events.event_icons]
+SubagentStart = "[bold blue]\U000f0443[/]\u00a0"
+SubagentStop = "[bold blue]\U000f0441[/]\u00a0"
+UserPromptSubmit = "[bright_white]\uf007[/]\u00a0"
+Stop = "[green]\uf4f0[/]\u00a0"
+StopUndone = "[yellow]\uf0e2[/]\u00a0"
+Interrupt = "[red]\ue009[/]\u00a0"
+
+# Line count bar configuration
+[modules.events.line_bars]
+chars = "▂▃▄▅▆▇█"
+thresholds = [1, 6, 16, 31, 51, 101, 201]

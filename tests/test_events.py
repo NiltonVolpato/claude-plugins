@@ -6,9 +6,6 @@ from rich.text import Text
 from statusline.input import EventsInfo, EventTuple, StatuslineInput
 from statusline.modules import get_module
 from statusline.modules.events import (
-    BASH_ICONS,
-    EVENT_ICONS,
-    TOOL_ICONS,
     EventSegment,
     ExpandableEvents,
     _lines_to_bar,
@@ -72,36 +69,41 @@ ASCII_BASH_ICONS = {
 }
 
 
+# Default line bar config for tests (matching defaults.toml)
+LINE_BARS_CHARS = "▂▃▄▅▆▇█"
+LINE_BARS_THRESHOLDS = [1, 6, 16, 31, 51, 101, 201]
+
+
 class TestLinesToBar:
     """Tests for the _lines_to_bar helper."""
 
     def test_zero_returns_nbsp(self):
         """Zero lines returns non-breaking space (invisible bar)."""
-        assert _lines_to_bar(0) == "\u00a0"
+        assert _lines_to_bar(0, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "\u00a0"
 
     def test_negative_returns_nbsp(self):
         """Negative lines returns non-breaking space (invisible bar)."""
-        assert _lines_to_bar(-5) == "\u00a0"
+        assert _lines_to_bar(-5, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "\u00a0"
 
     def test_one_to_five_lines(self):
-        assert _lines_to_bar(1) == "▃"
-        assert _lines_to_bar(5) == "▃"
+        assert _lines_to_bar(1, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▃"
+        assert _lines_to_bar(5, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▃"
 
     def test_six_to_fifteen_lines(self):
-        assert _lines_to_bar(6) == "▄"
-        assert _lines_to_bar(15) == "▄"
+        assert _lines_to_bar(6, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▄"
+        assert _lines_to_bar(15, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▄"
 
     def test_medium_changes(self):
-        assert _lines_to_bar(16) == "▅"
-        assert _lines_to_bar(30) == "▅"
-        assert _lines_to_bar(31) == "▆"
-        assert _lines_to_bar(50) == "▆"
+        assert _lines_to_bar(16, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▅"
+        assert _lines_to_bar(30, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▅"
+        assert _lines_to_bar(31, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▆"
+        assert _lines_to_bar(50, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▆"
 
     def test_large_changes(self):
-        assert _lines_to_bar(51) == "▇"
-        assert _lines_to_bar(100) == "▇"
-        assert _lines_to_bar(101) == "█"
-        assert _lines_to_bar(201) == "█"
+        assert _lines_to_bar(51, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▇"
+        assert _lines_to_bar(100, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "▇"
+        assert _lines_to_bar(101, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "█"
+        assert _lines_to_bar(201, LINE_BARS_CHARS, LINE_BARS_THRESHOLDS) == "█"
 
 
 def render_with_styles(renderable, width: int = 40) -> list:
@@ -230,6 +232,34 @@ class TestExpandableEventsRendering:
         assert "#aa0000" in str(crop_seg.style).lower()
 
 
+# Default theme vars for testing (all required fields)
+DEFAULT_TEST_THEME_VARS = {
+    "tool_icons": ASCII_TOOL_ICONS,
+    "event_icons": ASCII_EVENT_ICONS,
+    "bash_icons": ASCII_BASH_ICONS,
+    "spacing": 0,
+    "limit": 30,
+    "left": "[",
+    "right": "]",
+    "brackets": False,
+    "backgrounds": {
+        "main": "on #2a3a2a",
+        "user": "on #3a2a2a",
+        "subagent": "on #2a2a3a",
+        "edit_bar": "#4c4d4e",
+    },
+    "run_brackets": {
+        "main": ["[", "]"],
+        "user": ["{", "}"],
+        "subagent": ["<", ">"],
+    },
+    "line_bars": {
+        "chars": LINE_BARS_CHARS,
+        "thresholds": LINE_BARS_THRESHOLDS,
+    },
+}
+
+
 class TestEventsModuleWithAsciiIcons:
     """Tests for EventsModule using ASCII icons for predictable output."""
 
@@ -242,15 +272,7 @@ class TestEventsModuleWithAsciiIcons:
         """
         module = get_module("events")
         assert module is not None
-        theme = {
-            "tool_icons": ASCII_TOOL_ICONS,
-            "event_icons": ASCII_EVENT_ICONS,
-            "bash_icons": ASCII_BASH_ICONS,
-            "spacing": 0,  # No spacing between icons for predictable output
-            "left": "[",
-            "right": "]",
-            **theme_vars,
-        }
+        theme = {**DEFAULT_TEST_THEME_VARS, **theme_vars}
         inputs = {"events": EventsInfo(events=events)}
         result = module.render(inputs, theme)
         if result == "":
@@ -406,8 +428,11 @@ class TestEventToIcon:
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
+        backgrounds = {"edit_bar": "#4c4d4e"}
+        line_bars = {"chars": LINE_BARS_CHARS, "thresholds": LINE_BARS_THRESHOLDS}
         text, _ = module._event_to_icon(
-            event, tool, extra, ASCII_TOOL_ICONS, ASCII_EVENT_ICONS, ASCII_BASH_ICONS, {}
+            event, tool, extra, ASCII_TOOL_ICONS, ASCII_EVENT_ICONS, ASCII_BASH_ICONS,
+            backgrounds, line_bars
         )
         return text.plain.replace("\u00a0", " ") if text else ""
 
@@ -445,13 +470,23 @@ class TestEventToIcon:
 class TestEditWithLineCounts:
     """Tests for Edit events with line count bars."""
 
+    def _get_icon_call_args(self):
+        """Get the common arguments for _event_to_icon calls."""
+        return (
+            ASCII_TOOL_ICONS,
+            ASCII_EVENT_ICONS,
+            ASCII_BASH_ICONS,
+            {"edit_bar": "#4c4d4e"},
+            {"chars": LINE_BARS_CHARS, "thresholds": LINE_BARS_THRESHOLDS},
+        )
+
     def test_edit_with_additions_only(self):
         """Edit with only additions shows green bar + placeholder space."""
-        from statusline.modules.events import EventsModule, LINE_BARS
+        from statusline.modules.events import EventsModule
 
         module = EventsModule()
         text, width = module._event_to_icon(
-            "PostToolUse", "Edit", "+10-0", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
+            "PostToolUse", "Edit", "+10-0", *self._get_icon_call_args()
         )
         assert text is not None
         plain = text.plain
@@ -463,11 +498,11 @@ class TestEditWithLineCounts:
 
     def test_edit_with_deletions_only(self):
         """Edit with only deletions shows placeholder space + red bar."""
-        from statusline.modules.events import EventsModule, LINE_BARS
+        from statusline.modules.events import EventsModule
 
         module = EventsModule()
         text, width = module._event_to_icon(
-            "PostToolUse", "Edit", "+0-50", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
+            "PostToolUse", "Edit", "+0-50", *self._get_icon_call_args()
         )
         assert text is not None
         plain = text.plain
@@ -481,19 +516,14 @@ class TestEditWithLineCounts:
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
+        args = self._get_icon_call_args()
 
         # +5-2: both bars visible
-        text1, width1 = module._event_to_icon(
-            "PostToolUse", "Edit", "+5-2", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
-        )
+        text1, width1 = module._event_to_icon("PostToolUse", "Edit", "+5-2", *args)
         # +10-0: addition bar + placeholder
-        text2, width2 = module._event_to_icon(
-            "PostToolUse", "Edit", "+10-0", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
-        )
+        text2, width2 = module._event_to_icon("PostToolUse", "Edit", "+10-0", *args)
         # +0-10: placeholder + deletion bar
-        text3, width3 = module._event_to_icon(
-            "PostToolUse", "Edit", "+0-10", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
-        )
+        text3, width3 = module._event_to_icon("PostToolUse", "Edit", "+0-10", *args)
 
         # All should have same width: icon(2) + bars(2) = 4
         assert width1 == width2 == width3 == 4, f"Widths differ: {width1}, {width2}, {width3}"
@@ -503,7 +533,7 @@ class TestEditWithLineCounts:
 
         module = EventsModule()
         text, width = module._event_to_icon(
-            "PostToolUse", "Edit", "+100-5", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, {}
+            "PostToolUse", "Edit", "+100-5", *self._get_icon_call_args()
         )
         assert text is not None
         plain = text.plain
@@ -516,9 +546,8 @@ class TestEditWithLineCounts:
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
-        backgrounds = {"edit_bar": "#4c4d4e"}
         text, width = module._event_to_icon(
-            "PostToolUse", "Edit", "+5-2", TOOL_ICONS, EVENT_ICONS, BASH_ICONS, backgrounds
+            "PostToolUse", "Edit", "+5-2", *self._get_icon_call_args()
         )
         assert text is not None
 
@@ -530,10 +559,8 @@ class TestEditWithLineCounts:
 
     def test_edit_bars_keep_background_after_segment_styling(self):
         """When segment background is applied, bars should keep their own background."""
-        from statusline.modules.events import EventsModule
         from statusline.input import EventsInfo, EventTuple
         from statusline.modules import get_module
-        from rich.segment import Segment
 
         # Render a full event with Edit in a segment
         events: list[EventTuple] = [
@@ -542,10 +569,17 @@ class TestEditWithLineCounts:
         module = get_module("events")
         assert module is not None
 
-        # Render with a segment background
+        # Render with a segment background (using full theme_vars)
+        theme = {**DEFAULT_TEST_THEME_VARS}
+        theme["backgrounds"] = {
+            "main": "on #2a3a2a",
+            "user": "on #3a2a2a",
+            "subagent": "on #2a2a3a",
+            "edit_bar": "#abcdef",
+        }
         result = module.render(
             {"events": EventsInfo(events=events)},
-            {"backgrounds": {"main": "on #2a3a2a", "edit_bar": "#abcdef"}},
+            theme,
         )
 
         # Get the segments and check bar backgrounds
@@ -618,22 +652,36 @@ class TestEventsInfoProvider:
 
 
 class TestToolIconsComplete:
-    """Verify all expected icons are defined."""
+    """Verify all expected icons are defined in defaults.toml."""
 
     def test_all_tools_have_icons(self):
+        from statusline.config import load_config
+        config = load_config()
+        theme_vars = config.get_theme_vars("events")
+        tool_icons = theme_vars.get("tool_icons", {})
         expected = ["Bash", "Edit", "Write", "Read", "Glob", "Grep", "Task", "WebFetch", "WebSearch"]
         for tool in expected:
-            assert tool in TOOL_ICONS
+            assert tool in tool_icons, f"Missing tool icon: {tool}"
 
     def test_all_events_have_icons(self):
-        expected = ["PostToolUse", "PostToolUseFailure", "SubagentStart", "SubagentStop", "UserPromptSubmit", "Stop", "Interrupt"]
+        from statusline.config import load_config
+        config = load_config()
+        theme_vars = config.get_theme_vars("events")
+        event_icons = theme_vars.get("event_icons", {})
+        # Note: PostToolUse and PostToolUseFailure intentionally don't have icons
+        # (they use tool_icons instead)
+        expected = ["SubagentStart", "SubagentStop", "UserPromptSubmit", "Stop", "Interrupt"]
         for event in expected:
-            assert event in EVENT_ICONS
+            assert event in event_icons, f"Missing event icon: {event}"
 
     def test_common_bash_commands_have_icons(self):
+        from statusline.config import load_config
+        config = load_config()
+        theme_vars = config.get_theme_vars("events")
+        bash_icons = theme_vars.get("bash_icons", {})
         expected = ["git", "cargo", "uv", "python", "pytest", "npm", "docker"]
         for cmd in expected:
-            assert cmd in BASH_ICONS
+            assert cmd in bash_icons, f"Missing bash icon: {cmd}"
 
 
 class TestSpacingAfterTurnEnd:
@@ -650,7 +698,7 @@ class TestSpacingAfterTurnEnd:
         import re
 
         module = EventsModule()
-        theme_vars = {"spacing": spacing}
+        theme_vars = {**DEFAULT_TEST_THEME_VARS, "spacing": spacing}
         result = module.render(
             {"events": EventsInfo(events=events)},
             theme_vars,
@@ -707,13 +755,8 @@ class TestStopUndoneDetection:
         import re
 
         module = EventsModule()
-        # Use ASCII icons for predictable output
-        theme_vars = {
-            "event_icons": ASCII_EVENT_ICONS,
-            "tool_icons": ASCII_TOOL_ICONS,
-            "bash_icons": ASCII_BASH_ICONS,
-            "spacing": 0,
-        }
+        # Use full theme_vars with ASCII icons for predictable output
+        theme_vars = {**DEFAULT_TEST_THEME_VARS, "spacing": 0}
         result = module.render({"events": EventsInfo(events=events)}, theme_vars)
         from rich.console import Console
         from io import StringIO

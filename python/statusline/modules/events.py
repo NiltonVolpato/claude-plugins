@@ -14,67 +14,14 @@ from statusline.config import ThemeVars
 from statusline.input import EventsInfo, EventTuple, InputModel
 from statusline.modules import Module, register
 
-# Default icon mappings (nerd font icons with trailing NBSP for proper width)
-# The \u00a0 (non-breaking space) is part of the icon, compensating for
-# nerd font glyphs that are wider than 1 terminal cell.
-TOOL_ICONS = {
-    "Bash": "[bright_black]\uea85[/]\u00a0",  # cod-terminal
-    "Edit": "[yellow]\uf4d2[/]\u00a0",  # fa-edit (pencil)
-    "Write": "[green]\uea7f[/]\u00a0",  # fa-edit
-    "Read": "[cyan]\U000f0dca[/]\u00a0",  # cod-eye
-    "Glob": "[blue]\uf002[/]\u00a0",  # cod-search
-    "Grep": "[blue]\uf002[/]\u00a0",  # cod-search
-    "Task": "[magenta]\ueab3[/]\u00a0",  # cod-checklist
-    "WebFetch": "[cyan]\ueb01[/]\u00a0",  # cod-globe
-    "WebSearch": "[cyan]\ueb01[/]\u00a0",  # cod-globe
-}
-
-# Bash command-specific icons (extra field contains first word of command)
-BASH_ICONS = {
-    "git": "[#f05032]\ue702[/]\u00a0",  # dev-git (git orange)
-    "cargo": "[#dea584]\ue7a8[/]\u00a0",  # dev-rust (rust orange)
-    "uv": "[green]\ue73c[/]\u00a0",  # dev-python
-    "python": "[green]\ue73c[/]\u00a0",  # dev-python
-    "python3": "[green]\ue73c[/]\u00a0",  # dev-python
-    "pytest": "[yellow]\ue87a[/]\u00a0",  # dev-pytest
-    "npm": "[red]\ue71e[/]\u00a0",  # dev-npm
-    "node": "[green]\ue71e[/]\u00a0",  # dev-npm (node green)
-    "docker": "[#2496ed]\ue7b0[/]\u00a0",  # dev-docker (docker blue)
-    "make": "[bright_black]\uf0ad[/]\u00a0",  # fa-wrench
-    "sqlite3": "[blue]\uf472[/]\u00a0",  # cod-database
-    "sleep": "[yellow]\U000f04b2[/]\u00a0",
-    "chatterbox": "[cyan]\U000f050a[/]\u00a0",
-    "rm": "[red]\U000f01b4[/]\u00a0",
-}
-
-# Bar characters for line counts (logarithmic scale)
-LINE_BARS = "▂▃▄▅▆▇█"
-LINE_THRESHOLDS = [1, 6, 16, 31, 51, 101, 201]
-
-
-def _lines_to_bar(count: int) -> str:
+def _lines_to_bar(count: int, chars: str, thresholds: list[int]) -> str:
     """Convert line count to a bar character (\u00a0 if 0)."""
     if count <= 0:
         return "\u00a0"  # Non-breaking space: invisible bar
-    for i, threshold in enumerate(LINE_THRESHOLDS):
+    for i, threshold in enumerate(thresholds):
         if count < threshold:
-            return LINE_BARS[i]
-    return LINE_BARS[-1]
-
-
-# NOTE: Many Nerd Font icons are wider than 1 cell (1.5-2 chars) and overflow
-# into the next character space. The trailing \u00a0 (NBSP) in icon definitions
-# compensates for this - it's part of the icon's visual width, not spacing.
-EVENT_ICONS = {
-    "PostToolUse": None,  # Uses TOOL_ICONS
-    "PostToolUseFailure": None,  # Check extra for "interrupt"
-    "SubagentStart": "[bold blue]\U000f0443[/]\u00a0",  # cod-run-all (play arrow)
-    "SubagentStop": "[bold blue]\U000f0441[/]\u00a0",  # fa-stop
-    "UserPromptSubmit": "[bright_white]\uf007[/]\u00a0",  # fa-user
-    "Stop": "[green]\uf4f0[/]\u00a0",  # nf-md-check_circle (final stop)
-    "StopUndone": "[yellow]\uf0e2[/]\u00a0",  # fa-undo (stop that got cancelled by hook)
-    "Interrupt": "[red]\ue009[/]\u00a0",  # interrupted/cancelled (synthetic)
-}
+            return chars[i]
+    return chars[-1]
 
 
 @dataclass
@@ -307,12 +254,13 @@ class ExpandableEvents:
     ):
         self.segments = segments
         self.expand = expand
-        self.left = left
-        self.right = right
+        # Parse brackets as Rich markup
+        self.left = Text.from_markup(left) if left else Text()
+        self.right = Text.from_markup(right) if right else Text()
 
     def __rich_console__(self, console, options):
         width = options.max_width
-        frame_width = cell_len(self.left) + cell_len(self.right)
+        frame_width = self.left.cell_len + self.right.cell_len
         available = width - frame_width
 
         # Build from right (most recent), truncate from left
@@ -343,7 +291,7 @@ class ExpandableEvents:
             partial_text = Text(" " * remaining)
 
         # Yield left bracket
-        yield Segment(self.left)
+        yield from self.left.render(console)
 
         # Yield partial/cropped segment if any
         if partial_text:
@@ -354,10 +302,10 @@ class ExpandableEvents:
             yield from seg.text.render(console)
 
         # Yield right bracket
-        yield Segment(self.right)
+        yield from self.right.render(console)
 
     def __rich_measure__(self, console, options):
-        frame_width = cell_len(self.left) + cell_len(self.right)
+        frame_width = self.left.cell_len + self.right.cell_len
         total = sum(seg.width for seg in self.segments) + frame_width
         if self.expand:
             return Measurement(frame_width, options.max_width)
@@ -371,13 +319,6 @@ class EventsModule(Module):
     name = "events"
     __inputs__ = [EventsInfo]
 
-    # Default brackets for each context (used in bracket mode)
-    DEFAULT_BRACKETS: dict[RunContext, list[str]] = {
-        "main": ["[", "]"],
-        "user": ["{", "}"],
-        "subagent": ["<", ">"],
-    }
-
     def render(
         self,
         inputs: dict[str, InputModel],
@@ -390,8 +331,7 @@ class EventsModule(Module):
             return ""
 
         # Apply limit from theme when not expanding
-        limit_val = theme_vars.get("limit", 30)
-        limit = int(limit_val) if isinstance(limit_val, (int, str)) else 30
+        limit = int(theme_vars["limit"])
         raw_events = events_info.events if expand else events_info.events[-limit:]
 
         # Group events into runs
@@ -399,26 +339,26 @@ class EventsModule(Module):
         if not runs:
             return ""
 
-        # Get icon mappings from theme or use defaults
-        tool_icons = theme_vars.get("tool_icons", TOOL_ICONS)
-        event_icons = theme_vars.get("event_icons", EVENT_ICONS)
-        bash_icons = theme_vars.get("bash_icons", BASH_ICONS)
+        # Get icon mappings from theme
+        tool_icons = theme_vars["tool_icons"]
+        event_icons = theme_vars["event_icons"]
+        bash_icons = theme_vars["bash_icons"]
+        line_bars = theme_vars["line_bars"]
 
         # Configurable spacing (uniform within runs)
-        spacing_val = theme_vars.get("spacing", 0)
-        spacing = int(spacing_val) if isinstance(spacing_val, (int, str)) else 0
+        spacing = int(theme_vars["spacing"])
 
-        # Background styles (configurable via theme_vars)
-        backgrounds = theme_vars.get("backgrounds", {})
+        # Background styles
+        backgrounds = theme_vars["backgrounds"]
         context_bg: dict[RunContext, str] = {
-            "main": backgrounds.get("main", "on #2a3a2a"),  # greenish
-            "user": backgrounds.get("user", "on #3a2a2a"),  # warm/reddish
-            "subagent": backgrounds.get("subagent", "on #2a2a3a"),  # blue-ish
+            "main": backgrounds["main"],
+            "user": backgrounds["user"],
+            "subagent": backgrounds["subagent"],
         }
 
         # Bracket mode: show brackets around each run
-        bracket_mode = theme_vars.get("brackets", False)
-        brackets_config = theme_vars.get("run_brackets", self.DEFAULT_BRACKETS)
+        bracket_mode = theme_vars["brackets"]
+        brackets_config = theme_vars["run_brackets"]
 
         # Build segments (one per run)
         # Spacing between icons is `spacing` spaces. At run boundaries,
@@ -438,15 +378,16 @@ class EventsModule(Module):
             text = Text()
             width = 0
 
-            # Opening bracket
+            # Opening bracket (supports Rich markup)
             if open_bracket:
-                text.append(open_bracket, style=bg)
-                width += cell_len(open_bracket)
+                open_text = Text.from_markup(open_bracket)
+                text.append_text(open_text)
+                width += open_text.cell_len
 
             # Spacing at start of run (second half from previous run boundary)
             # Add for all runs except the first one (run_idx 0)
             # The ExpandableEvents renders segments in reverse order, so the last run is rendered first
-            if run_idx > 0 and half_boundary > 0:
+            if half_boundary > 0:
                 text.append(" " * half_boundary, style=bg)
                 width += half_boundary
 
@@ -461,6 +402,7 @@ class EventsModule(Module):
                     event_icons,
                     bash_icons,
                     backgrounds,
+                    line_bars,
                     segment_bg=bg,
                 )
                 if not icon_text:
@@ -478,21 +420,22 @@ class EventsModule(Module):
             # Spacing at end of run (first half from next run boundary)
             # Add for all runs except the first one (run_idx 0)
             # The first run will be rendered last and has no preceding boundary
-            if run_idx > 0 and half_boundary > 0:
+            if half_boundary > 0:
                 text.append(" " * half_boundary, style=bg)
                 width += half_boundary
 
-            # Closing bracket
+            # Closing bracket (supports Rich markup)
             if close_bracket:
-                text.append(close_bracket, style=bg)
-                width += cell_len(close_bracket)
+                close_text = Text.from_markup(close_bracket)
+                text.append_text(close_text)
+                width += close_text.cell_len
 
             if width > 0:  # Only add non-empty runs
                 segments.append(EventSegment(text, width))
 
         # Outer frame brackets
-        left = str(theme_vars.get("left", "["))
-        right = str(theme_vars.get("right", "]"))
+        left = str(theme_vars["left"])
+        right = str(theme_vars["right"])
         return ExpandableEvents(segments, expand=expand, left=left, right=right)
 
     def _event_to_icon(
@@ -504,6 +447,7 @@ class EventsModule(Module):
         event_icons: dict,
         bash_icons: dict,
         backgrounds: dict,
+        line_bars: dict,
         segment_bg: str | None = None,
     ) -> tuple[Text | None, int]:
         """Convert an event to its styled Text representation and display width.
@@ -545,14 +489,16 @@ class EventsModule(Module):
                     parts = extra[1:].split("-")
                     added = int(parts[0]) if parts[0] else 0
                     removed = int(parts[1]) if len(parts) > 1 and parts[1] else 0
-                    add_bar = _lines_to_bar(added)
-                    rem_bar = _lines_to_bar(removed)
+                    chars = line_bars["chars"]
+                    thresholds = line_bars["thresholds"]
+                    add_bar = _lines_to_bar(added, chars, thresholds)
+                    rem_bar = _lines_to_bar(removed, chars, thresholds)
                     # Always show 2 bar positions (additions + deletions)
                     # _lines_to_bar returns NBSP for 0 (invisible bar)
                     text = Text.from_markup(base_icon)
                     if segment_bg:
                         text.stylize(segment_bg)
-                    bar_bg = backgrounds.get("edit_bar", "#4c4d4e")
+                    bar_bg = backgrounds["edit_bar"]
                     text.append(add_bar, style=f"green on {bar_bg}")
                     text.append(rem_bar, style=f"red on {bar_bg}")
                     return text, text.cell_len
