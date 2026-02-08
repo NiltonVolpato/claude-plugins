@@ -8,7 +8,8 @@ from io import StringIO
 
 from rich.console import Console, RenderableType
 
-CLAUDE_CODE_PADDING = 4 + 2  # 4: actual padding + 2: safety margin
+# 4: actual padding + 15: reserved for claude code notifications
+CLAUDE_CODE_PADDING = 4 + 15
 
 
 def get_terminal_width(config_width: int | None = None) -> int:

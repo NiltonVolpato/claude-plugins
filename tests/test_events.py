@@ -2,7 +2,6 @@
 
 from rich.console import Console
 from rich.text import Text
-
 from statusline.input import EventsInfo, EventTuple, StatuslineInput
 from statusline.modules import get_module
 from statusline.modules.events import (
@@ -238,6 +237,7 @@ DEFAULT_TEST_THEME_VARS = {
     "event_icons": ASCII_EVENT_ICONS,
     "bash_icons": ASCII_BASH_ICONS,
     "spacing": 0,
+    "run_spacing": "",
     "limit": 30,
     "left": "[",
     "right": "]",
@@ -416,6 +416,43 @@ class TestEventsModuleWithAsciiIcons:
         # user(U) + main(R S) + user(U) + main(E S)
         assert output == "[U R S U E S ]"
 
+    def test_run_spacing_default_empty(self):
+        """Default run_spacing (empty) has no gap between runs."""
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Read", None, None),
+            ("Stop", None, None, None),
+        ]
+        # With run_spacing="" (default), no extra gap between user run and main run
+        output = self._render_events(events, width=20, run_spacing="")
+        assert output == "[U R S ]"
+
+    def test_run_spacing_single_space(self):
+        """run_spacing with single space adds gap between runs."""
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Read", None, None),
+            ("Stop", None, None, None),
+        ]
+        # With run_spacing=" ", extra space between user run (U) and main run (R S)
+        output = self._render_events(events, width=20, run_spacing=" ")
+        assert output == "[U  R S ]"
+
+    def test_run_spacing_multiple_runs(self):
+        """run_spacing applies between each run transition."""
+        events: list[EventTuple] = [
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Read", None, None),
+            ("Stop", None, None, None),
+            ("UserPromptSubmit", None, None, None),
+            ("PostToolUse", "Edit", None, None),
+            ("Stop", None, None, None),
+        ]
+        # Gap after each run except the last
+        output = self._render_events(events, width=35, run_spacing=" ")
+        # user(U) + space + main(R S) + space + user(U) + space + main(E S)
+        assert output == "[U  R S  U  E S ]"
+
 
 class TestEventToIcon:
     """Tests for _event_to_icon method with ASCII icons."""
@@ -431,8 +468,14 @@ class TestEventToIcon:
         backgrounds = {"edit_bar": "#4c4d4e"}
         line_bars = {"chars": LINE_BARS_CHARS, "thresholds": LINE_BARS_THRESHOLDS}
         text, _ = module._event_to_icon(
-            event, tool, extra, ASCII_TOOL_ICONS, ASCII_EVENT_ICONS, ASCII_BASH_ICONS,
-            backgrounds, line_bars
+            event,
+            tool,
+            extra,
+            ASCII_TOOL_ICONS,
+            ASCII_EVENT_ICONS,
+            ASCII_BASH_ICONS,
+            backgrounds,
+            line_bars,
         )
         return text.plain.replace("\u00a0", " ") if text else ""
 
@@ -526,7 +569,9 @@ class TestEditWithLineCounts:
         text3, width3 = module._event_to_icon("PostToolUse", "Edit", "+0-10", *args)
 
         # All should have same width: icon(2) + bars(2) = 4
-        assert width1 == width2 == width3 == 4, f"Widths differ: {width1}, {width2}, {width3}"
+        assert width1 == width2 == width3 == 4, (
+            f"Widths differ: {width1}, {width2}, {width3}"
+        )
 
     def test_edit_with_both(self):
         from statusline.modules.events import EventsModule
@@ -584,6 +629,7 @@ class TestEditWithLineCounts:
 
         # Get the segments and check bar backgrounds
         from rich.console import Console
+
         console = Console(force_terminal=True, width=80)
 
         class FakeOptions:
@@ -597,13 +643,19 @@ class TestEditWithLineCounts:
         for seg in segments:
             if seg.style and seg.style.bgcolor:
                 # Check if bgcolor has the RGB values for #abcdef
-                if hasattr(seg.style.bgcolor, 'triplet'):
+                if hasattr(seg.style.bgcolor, "triplet"):
                     triplet = seg.style.bgcolor.triplet
-                    if triplet.red == 171 and triplet.green == 205 and triplet.blue == 239:
+                    if (
+                        triplet.red == 171
+                        and triplet.green == 205
+                        and triplet.blue == 239
+                    ):
                         found_edit_bar_bg = True
                         break
 
-        assert found_edit_bar_bg, f"Edit bar background not found in segments: {segments}"
+        assert found_edit_bar_bg, (
+            f"Edit bar background not found in segments: {segments}"
+        )
 
 
 class TestEventsInfoProvider:
@@ -656,26 +708,45 @@ class TestToolIconsComplete:
 
     def test_all_tools_have_icons(self):
         from statusline.config import load_config
+
         config = load_config()
         theme_vars = config.get_theme_vars("events")
         tool_icons = theme_vars.get("tool_icons", {})
-        expected = ["Bash", "Edit", "Write", "Read", "Glob", "Grep", "Task", "WebFetch", "WebSearch"]
+        expected = [
+            "Bash",
+            "Edit",
+            "Write",
+            "Read",
+            "Glob",
+            "Grep",
+            "Task",
+            "WebFetch",
+            "WebSearch",
+        ]
         for tool in expected:
             assert tool in tool_icons, f"Missing tool icon: {tool}"
 
     def test_all_events_have_icons(self):
         from statusline.config import load_config
+
         config = load_config()
         theme_vars = config.get_theme_vars("events")
         event_icons = theme_vars.get("event_icons", {})
         # Note: PostToolUse and PostToolUseFailure intentionally don't have icons
         # (they use tool_icons instead)
-        expected = ["SubagentStart", "SubagentStop", "UserPromptSubmit", "Stop", "Interrupt"]
+        expected = [
+            "SubagentStart",
+            "SubagentStop",
+            "UserPromptSubmit",
+            "Stop",
+            "Interrupt",
+        ]
         for event in expected:
             assert event in event_icons, f"Missing event icon: {event}"
 
     def test_common_bash_commands_have_icons(self):
         from statusline.config import load_config
+
         config = load_config()
         theme_vars = config.get_theme_vars("events")
         bash_icons = theme_vars.get("bash_icons", {})
@@ -693,9 +764,10 @@ class TestSpacingAfterTurnEnd:
 
     def _render_events_plain(self, events: list[EventTuple], spacing: int = 1) -> str:
         """Render events and return plain text (no ANSI codes)."""
-        from statusline.modules.events import EventsModule
-        from statusline.input import EventsInfo
         import re
+
+        from statusline.input import EventsInfo
+        from statusline.modules.events import EventsModule
 
         module = EventsModule()
         theme_vars = {**DEFAULT_TEST_THEME_VARS, "spacing": spacing}
@@ -704,14 +776,15 @@ class TestSpacingAfterTurnEnd:
             theme_vars,
         )
         # Convert Rich renderable to text
-        from rich.console import Console
         from io import StringIO
+
+        from rich.console import Console
 
         console = Console(file=StringIO(), force_terminal=True, width=200)
         console.print(result, end="")
         raw = console.file.getvalue()
         # Strip ANSI escape codes
-        return re.sub(r'\x1b\[[0-9;]*m', '', raw)
+        return re.sub(r"\x1b\[[0-9;]*m", "", raw)
 
     def test_no_double_spacing_after_stop(self):
         """After Stop (turn-end), next icon should not get prefix spacing.
@@ -730,7 +803,9 @@ class TestSpacingAfterTurnEnd:
         # Find the Stop icon (checkmark) and count spaces after it
         # The checkmark is \uf00c which renders as a special char
         # Just verify there aren't 4+ consecutive spaces anywhere
-        assert "    " not in plain, f"Found 4+ consecutive spaces (double spacing bug): {repr(plain)}"
+        assert "    " not in plain, (
+            f"Found 4+ consecutive spaces (double spacing bug): {repr(plain)}"
+        )
 
     def test_no_double_spacing_after_subagent_stop(self):
         """After SubagentStop (turn-end), next icon should not get prefix spacing."""
@@ -742,7 +817,9 @@ class TestSpacingAfterTurnEnd:
             ("PostToolUse", "Bash", None, "echo test"),
         ]
         plain = self._render_events_plain(events, spacing=2)
-        assert "    " not in plain, f"Found 4+ consecutive spaces (double spacing bug): {repr(plain)}"
+        assert "    " not in plain, (
+            f"Found 4+ consecutive spaces (double spacing bug): {repr(plain)}"
+        )
 
 
 class TestStopUndoneDetection:
@@ -750,21 +827,23 @@ class TestStopUndoneDetection:
 
     def _render_events_plain(self, events: list[EventTuple]) -> str:
         """Render events and return plain text (no ANSI codes)."""
-        from statusline.modules.events import EventsModule
-        from statusline.input import EventsInfo
         import re
+
+        from statusline.input import EventsInfo
+        from statusline.modules.events import EventsModule
 
         module = EventsModule()
         # Use full theme_vars with ASCII icons for predictable output
         theme_vars = {**DEFAULT_TEST_THEME_VARS, "spacing": 0}
         result = module.render({"events": EventsInfo(events=events)}, theme_vars)
-        from rich.console import Console
         from io import StringIO
+
+        from rich.console import Console
 
         console = Console(file=StringIO(), force_terminal=True, width=200)
         console.print(result, end="")
         raw = console.file.getvalue()
-        return re.sub(r'\x1b\[[0-9;]*m', '', raw)
+        return re.sub(r"\x1b\[[0-9;]*m", "", raw)
 
     def test_stop_followed_by_tool_is_undone(self):
         """Stop followed by tool use should show as StopUndone (~)."""

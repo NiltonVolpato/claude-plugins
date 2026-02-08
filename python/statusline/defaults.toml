@@ -86,6 +86,7 @@ themes.minimal.label = ""
 [modules.events]
 expand = true
 spacing = 2
+run_spacing = ""
 limit = 30
 left = "["
 right = "]"

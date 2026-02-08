@@ -14,6 +14,7 @@ from statusline.config import ThemeVars
 from statusline.input import EventsInfo, EventTuple, InputModel
 from statusline.modules import Module, register
 
+
 def _lines_to_bar(count: int, chars: str, thresholds: list[int]) -> str:
     """Convert line count to a bar character (\u00a0 if 0)."""
     if count <= 0:
@@ -368,6 +369,7 @@ class EventsModule(Module):
         segments: list[EventSegment] = []
         boundary_spacing = spacing + (spacing % 2)  # Round up to next even number
         half_boundary = boundary_spacing // 2
+        run_spacing = theme_vars.get("run_spacing", "")
 
         for run_idx, run in enumerate(runs):
             bg = context_bg.get(run.context, "")
@@ -377,6 +379,11 @@ class EventsModule(Module):
             # Build run content
             text = Text()
             width = 0
+
+            # Spacing before run (gap between runs)
+            if run_idx > 0 and run_spacing:
+                text.append(run_spacing)
+                width += len(run_spacing)
 
             # Opening bracket (supports Rich markup)
             if open_bracket:
