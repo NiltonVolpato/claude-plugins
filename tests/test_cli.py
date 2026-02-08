@@ -3,9 +3,13 @@
 import json
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 
-def run_statusline(*args: str, stdin: str | None = None, use_user_config: bool = False) -> subprocess.CompletedProcess:
+def run_statusline(
+    *args: str, stdin: str | None = None, config: str | None = None
+) -> subprocess.CompletedProcess:
     """Run the statusline CLI with the given arguments.
 
     Args:
@@ -14,8 +18,9 @@ def run_statusline(*args: str, stdin: str | None = None, use_user_config: bool =
         use_user_config: If False (default), uses --config=/dev/null for hermeticity
     """
     # Global --config must come before the subcommand
-    if use_user_config:
-        cmd = [sys.executable, "-m", "statusline", *args]
+    if config is not None:
+        cmd = [sys.executable, "-m", "statusline", f"--config={config}", *args]
+        print(cmd)
     else:
         cmd = [sys.executable, "-m", "statusline", "--config=/dev/null", *args]
     return subprocess.run(
@@ -47,14 +52,18 @@ class TestCLIPreview:
         assert "claude-plugins" in result.stdout
 
     def test_preview_custom_modules(self):
-        result = run_statusline("preview", "--modules=model,version", "--theme=minimal", "--no-color")
+        result = run_statusline(
+            "preview", "--modules=model,version", "--theme=minimal", "--no-color"
+        )
         assert result.returncode == 0
         assert "Opus 4.5" in result.stdout
         assert "v2.0.76" in result.stdout
         assert "my-project" not in result.stdout
 
     def test_preview_custom_separator(self):
-        result = run_statusline("preview", "--separator= :: ", "--theme=minimal", "--no-color")
+        result = run_statusline(
+            "preview", "--separator= :: ", "--theme=minimal", "--no-color"
+        )
         assert result.returncode == 0
         assert " :: " in result.stdout
 
@@ -80,11 +89,18 @@ class TestCLIPreview:
 
 class TestCLIRender:
     def test_render_from_stdin(self):
-        input_json = json.dumps({
-            "model": {"id": "test", "display_name": "Test Model"},
-            "workspace": {"current_dir": "/path/to/test-project", "project_dir": "/path/to/test-project"},
-        })
-        result = run_statusline("render", "--theme=minimal", "--no-color", stdin=input_json)
+        input_json = json.dumps(
+            {
+                "model": {"id": "test", "display_name": "Test Model"},
+                "workspace": {
+                    "current_dir": "/path/to/test-project",
+                    "project_dir": "/path/to/test-project",
+                },
+            }
+        )
+        result = run_statusline(
+            "render", "--theme=minimal", "--no-color", stdin=input_json
+        )
         assert result.returncode == 0
         assert "Test Model" in result.stdout
         assert "test-project" in result.stdout
@@ -94,11 +110,18 @@ class TestCLIRender:
         assert result.returncode == 0
 
     def test_render_with_ascii_theme(self):
-        input_json = json.dumps({
-            "model": {"id": "test", "display_name": "Test Model"},
-            "workspace": {"current_dir": "/path/to/test-project", "project_dir": "/path/to/test-project"},
-        })
-        result = run_statusline("render", "--theme=ascii", "--no-color", stdin=input_json)
+        input_json = json.dumps(
+            {
+                "model": {"id": "test", "display_name": "Test Model"},
+                "workspace": {
+                    "current_dir": "/path/to/test-project",
+                    "project_dir": "/path/to/test-project",
+                },
+            }
+        )
+        result = run_statusline(
+            "render", "--theme=ascii", "--no-color", stdin=input_json
+        )
         assert result.returncode == 0
         assert "Model:" in result.stdout
         assert "Directory:" in result.stdout
@@ -144,15 +167,70 @@ class TestCLIConfig:
         assert "statusline.toml" in result.stdout
 
     def test_invalid_toml_shows_friendly_error(self):
-        import tempfile
-        from pathlib import Path
-
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write("this is not valid toml [[[")
             f.flush()
-            result = run_statusline("--config", f.name, "preview", use_user_config=True)
+            result = run_statusline("preview", config=f.name)
             Path(f.name).unlink()
         assert result.returncode == 1
         assert "statusline:" in result.stdout
         assert "parsing config file" in result.stdout
         assert "Run 'statusline preview'" in result.stdout
+
+
+class TestEvents:
+    def test_preview_events(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("""\
+[modules.events]
+spacing = 2
+limit = 200
+brackets = true
+left = "["
+right = "]"
+
+# Tool icons (nerd font icons with trailing NBSP for proper width)
+[modules.events.themes.fallback.tool_icons]
+Bash = "[bright_black]$[/]"      # cod-terminal
+Edit = "[yellow]E[/]"             # fa-edit (pencil)
+Write = "[green]W[/]"             # fa-edit
+Read = "[cyan]R[/]"           # cod-eye
+Glob = "[blue]G[/]"               # cod-search
+Grep = "[blue]?[/]"               # cod-search
+Task = "[magenta]T[/]"            # cod-checklist
+WebFetch = "[cyan]@[/]"           # cod-globe
+WebSearch = "[cyan]@[/]"          # cod-globe
+
+# Bash command-specific icons
+[modules.events.themes.fallback.bash_icons]
+git = "[#f05032]g[/]"
+pytest = "[yellow]p[/]"
+
+# Event icons
+[modules.events.themes.fallback.event_icons]
+# PostToolUse and PostToolUseFailure are None (use tool_icons)
+SubagentStart = "[bold blue]<[/]"   # cod-run-all (play arrow)
+SubagentStop = "[bold blue]>[/]"     # fa-stop
+UserPromptSubmit = "[bright_white]U[/]"  # fa-user
+Stop = "[green]S[/]"                     # nf-md-check_circle (final stop)
+StopUndone = "[yellow]~[/]"              # fa-undo (stop cancelled by hook)
+Interrupt = "[red]X[/]"                  # interrupted/cancelled (synthetic)
+""")
+            f.flush()
+            result = run_statusline(
+                "preview",
+                "--modules=events",
+                "--theme=fallback",
+                "--width=60",
+                "--no-color",
+                config=f.name,
+            )
+            Path(f.name).unlink()
+            print(f"stdout: {result.stdout}")
+            print(f"stderr: {repr(result.stderr)}")
+
+        assert result.returncode == 0
+        assert (
+            result.stdout.strip()
+            == "[S ]{ U }[ E▃▃  g  S ]{ U }[ ?  <  R  E▄   >  S ]{ U }[ R ]]"
+        )
