@@ -8,6 +8,7 @@ from typing import Literal
 from rich.cells import cell_len
 from rich.measure import Measurement
 from rich.segment import Segment
+from rich.style import Style
 from rich.text import Text
 
 from statusline.config import ThemeVars
@@ -252,9 +253,11 @@ class ExpandableEvents:
         expand: bool = False,
         left: str = "",
         right: str = "",
+        background: str = "",
     ):
         self.segments = segments
         self.expand = expand
+        self.background = background
         # Parse brackets as Rich markup
         self.left = Text.from_markup(left) if left else Text()
         self.right = Text.from_markup(right) if right else Text()
@@ -291,19 +294,32 @@ class ExpandableEvents:
             # Normal padding when expanding (events align right)
             partial_text = Text(" " * remaining)
 
+        # Parse overall background style
+        bg_style = Style.parse(self.background) if self.background else None
+
+        # Helper to yield segments with background applied
+        def yield_with_bg(segments):
+            for segment in segments:
+                if bg_style and segment.style:
+                    yield Segment(segment.text, segment.style + bg_style, segment.control)
+                elif bg_style:
+                    yield Segment(segment.text, bg_style, segment.control)
+                else:
+                    yield segment
+
         # Yield left bracket
-        yield from self.left.render(console)
+        yield from yield_with_bg(self.left.render(console))
 
         # Yield partial/cropped segment if any
         if partial_text:
-            yield from partial_text.render(console)
+            yield from yield_with_bg(partial_text.render(console))
 
         # Yield each segment
         for seg in result:
-            yield from seg.text.render(console)
+            yield from yield_with_bg(seg.text.render(console))
 
         # Yield right bracket
-        yield from self.right.render(console)
+        yield from yield_with_bg(self.right.render(console))
 
     def __rich_measure__(self, console, options):
         frame_width = self.left.cell_len + self.right.cell_len
@@ -440,10 +456,13 @@ class EventsModule(Module):
             if width > 0:  # Only add non-empty runs
                 segments.append(EventSegment(text, width))
 
-        # Outer frame brackets
+        # Outer frame brackets and overall background
         left = str(theme_vars["left"])
         right = str(theme_vars["right"])
-        return ExpandableEvents(segments, expand=expand, left=left, right=right)
+        background = str(theme_vars.get("background", ""))
+        return ExpandableEvents(
+            segments, expand=expand, left=left, right=right, background=background
+        )
 
     def _event_to_icon(
         self,
