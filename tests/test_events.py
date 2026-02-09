@@ -238,9 +238,9 @@ DEFAULT_TEST_THEME_VARS = {
     "spacing": 0,
     "run_spacing": "",
     "limit": 30,
-    "left": "[",
-    "right": "]",
-    "brackets": False,
+    "left": "|",
+    "right": "|",
+    "brackets": True,
     "backgrounds": {
         "main": "on #2a3a2a",
         "user": "on #3a2a2a",
@@ -258,44 +258,69 @@ DEFAULT_TEST_THEME_VARS = {
     },
 }
 
+# Named configs to test with _render_events
+TEST_CONFIGS = {
+    "default": {},  # baseline (spacing=0)
+    "spacing=1": {"spacing": 1},
+}
+
 
 class TestEventsModuleWithAsciiIcons:
     """Tests for EventsModule using ASCII icons for predictable output."""
 
     def _render_events(
         self, events: list[EventTuple], width: int = 30, **theme_vars
-    ) -> str:
-        """Render events with ASCII icons and return plain text output."""
+    ) -> dict[str, str]:
+        """Render events with multiple configs, return dict of results."""
         module = get_module("events")
         assert module is not None
-        theme = {**DEFAULT_TEST_THEME_VARS, **theme_vars}
+        base_theme = {**DEFAULT_TEST_THEME_VARS, **theme_vars}
         inputs = {"events": EventsInfo(events=events)}
-        result = module.render(inputs, theme)
-        if result == "":
-            return ""
-        return render_plain(result, width=width)
+
+        results = {}
+        for name, config in TEST_CONFIGS.items():
+            theme = {**base_theme, **config}
+            result = module.render(inputs, theme)
+            results[name] = render_plain(result, width=width) if result else ""
+        return results
 
     def test_empty_events_returns_empty_string(self):
-        assert self._render_events([]) == ""
+        results = self._render_events([])
+        assert results["default"] == ""
+        assert results["spacing=1"] == ""
+
+    def test_left_right_not_swapped(self):
+        """Verify left and right frame brackets are in correct positions."""
+        events: list[EventTuple] = [("PostToolUse", "Read", None, None)]
+        results = self._render_events(events, width=15, left="(", right=")")
+        assert results["default"] == "([R])"
 
     def test_single_read_tool(self):
         """Single tool renders as a main run."""
         events: list[EventTuple] = [("PostToolUse", "Read", None, None)]
-        assert self._render_events(events, width=10) == "[R]"
+        results = self._render_events(events, width=15)
+        assert results["default"] == "|[R]|"
+        assert results["spacing=1"] == "|[ R ]|"
 
     def test_single_edit_tool(self):
         events: list[EventTuple] = [("PostToolUse", "Edit", None, None)]
-        assert self._render_events(events, width=10) == "[E]"
+        results = self._render_events(events, width=15)
+        assert results["default"] == "|[E]|"
+        assert results["spacing=1"] == "|[ E ]|"
 
     def test_user_prompt_submit(self):
         events: list[EventTuple] = [("UserPromptSubmit", None, None, None)]
         # UserPromptSubmit is a user run
-        assert self._render_events(events, width=10) == "[U]"
+        results = self._render_events(events, width=15)
+        assert results["default"] == "|{U}|"
+        assert results["spacing=1"] == "|{ U }|"
 
     def test_stop_event(self):
         """Stop event alone is a main run."""
         events: list[EventTuple] = [("Stop", None, None, None)]
-        assert self._render_events(events, width=10) == "[S]"
+        results = self._render_events(events, width=15)
+        assert results["default"] == "|[S]|"
+        assert results["spacing=1"] == "|[ S ]|"
 
     def test_simple_turn_sequence(self):
         """UserPromptSubmit -> Read -> Stop becomes user run + main run."""
@@ -305,8 +330,9 @@ class TestEventsModuleWithAsciiIcons:
             ("Stop", None, None, None),
         ]
         # U is user run, R S is main run - uniform spacing within runs
-        output = self._render_events(events, width=20)
-        assert output == "[URS]"
+        results = self._render_events(events, width=25)
+        assert results["default"] == "|{U}[RS]|"
+        assert results["spacing=1"] == "|{ U }[ R S ]|"
 
     def test_multiple_tools_in_turn(self):
         """UserPromptSubmit -> Glob -> Read -> Read -> Stop"""
@@ -317,8 +343,9 @@ class TestEventsModuleWithAsciiIcons:
             ("PostToolUse", "Read", None, None),
             ("Stop", None, None, None),
         ]
-        output = self._render_events(events, width=25)
-        assert output == "[UGRRS]"
+        results = self._render_events(events, width=30)
+        assert results["default"] == "|{U}[GRRS]|"
+        assert results["spacing=1"] == "|{ U }[ G R R S ]|"
 
     def test_subagent_sequence(self):
         """UserPromptSubmit -> SubagentStart -> Read -> SubagentStop -> Stop"""
@@ -329,25 +356,32 @@ class TestEventsModuleWithAsciiIcons:
             ("SubagentStop", None, "a1", None),
             ("Stop", None, None, None),
         ]
-        output = self._render_events(events, width=30)
         # user run (U) + main run with subagent markers (> R < S)
         # Subagent events are part of the main run
-        assert output == "[U>R<S]"
+        results = self._render_events(events, width=35)
+        assert results["default"] == "|{U}[>R<S]|"
+        assert results["spacing=1"] == "|{ U }[ > R < S ]|"
 
     def test_bash_git_command(self):
         """Bash with git command uses git icon."""
         events: list[EventTuple] = [("PostToolUse", "Bash", None, "git status")]
-        assert self._render_events(events, width=10) == "[g]"
+        results = self._render_events(events, width=15)
+        assert results["default"] == "|[g]|"
+        assert results["spacing=1"] == "|[ g ]|"
 
     def test_bash_pytest_command(self):
         """Bash with pytest command uses pytest icon."""
         events: list[EventTuple] = [("PostToolUse", "Bash", None, "pytest tests/")]
-        assert self._render_events(events, width=10) == "[p]"
+        results = self._render_events(events, width=15)
+        assert results["default"] == "|[p]|"
+        assert results["spacing=1"] == "|[ p ]|"
 
     def test_bash_unknown_command_uses_default(self):
         """Bash with unknown command uses default bash icon."""
         events: list[EventTuple] = [("PostToolUse", "Bash", None, "echo hello")]
-        assert self._render_events(events, width=10) == "[$]"
+        results = self._render_events(events, width=15)
+        assert results["default"] == "|[$]|"
+        assert results["spacing=1"] == "|[ $ ]|"
 
     def test_explicit_interrupt(self):
         """PostToolUseFailure with interrupt extra goes to user run."""
@@ -356,9 +390,10 @@ class TestEventsModuleWithAsciiIcons:
             ("PostToolUse", "Read", None, None),
             ("PostToolUseFailure", None, None, "interrupt"),
         ]
-        output = self._render_events(events, width=20)
         # user run (U) + main run (R) + user run (X)
-        assert output == "[URX]"
+        results = self._render_events(events, width=30)
+        assert results["default"] == "|{U}[R]{X}|"
+        assert results["spacing=1"] == "|{ U }[ R ]{ X }|"
 
     def test_inferred_interrupt(self):
         """UserPromptSubmit without prior Stop infers interrupt."""
@@ -369,9 +404,10 @@ class TestEventsModuleWithAsciiIcons:
             ("UserPromptSubmit", None, None, None),
             ("Stop", None, None, None),
         ]
-        output = self._render_events(events, width=25)
         # Synthetic interrupt inserted: user(U) + main(R) + user(X) + user(U) + main(S)
-        assert output == "[URXUS]"
+        results = self._render_events(events, width=40)
+        assert results["default"] == "|{U}[R]{X}{U}[S]|"
+        assert results["spacing=1"] == "|{ U }[ R ]{ X }{ U }[ S ]|"
 
     def test_skip_redundant_subagent_stop(self):
         """SubagentStop immediately after Stop is skipped."""
@@ -381,9 +417,10 @@ class TestEventsModuleWithAsciiIcons:
             ("Stop", None, None, None),
             ("SubagentStop", None, None, None),  # Should be skipped
         ]
-        output = self._render_events(events, width=20)
         # SubagentStop skipped: user(U) + main(R S)
-        assert output == "[URS]"
+        results = self._render_events(events, width=25)
+        assert results["default"] == "|{U}[RS]|"
+        assert results["spacing=1"] == "|{ U }[ R S ]|"
 
     def test_limit_truncates_events(self):
         """Limit parameter truncates older events."""
@@ -394,8 +431,9 @@ class TestEventsModuleWithAsciiIcons:
             ("PostToolUse", "Write", None, None),
         ]
         # With limit=2, should only process last 2 events
-        output = self._render_events(events, width=15, limit=2)
-        assert output == "[EW]"
+        results = self._render_events(events, width=20, limit=2)
+        assert results["default"] == "|[EW]|"
+        assert results["spacing=1"] == "|[ E W ]|"
 
     def test_two_complete_turns(self):
         """Two complete turns with different tools."""
@@ -407,9 +445,10 @@ class TestEventsModuleWithAsciiIcons:
             ("PostToolUse", "Edit", None, None),
             ("Stop", None, None, None),
         ]
-        output = self._render_events(events, width=30)
         # user(U) + main(R S) + user(U) + main(E S)
-        assert output == "[URSUES]"
+        results = self._render_events(events, width=40)
+        assert results["default"] == "|{U}[RS]{U}[ES]|"
+        assert results["spacing=1"] == "|{ U }[ R S ]{ U }[ E S ]|"
 
     def test_run_spacing_default_empty(self):
         """Default run_spacing (empty) has no gap between runs."""
@@ -419,8 +458,9 @@ class TestEventsModuleWithAsciiIcons:
             ("Stop", None, None, None),
         ]
         # With run_spacing="" (default), no extra gap between user run and main run
-        output = self._render_events(events, width=20, run_spacing="")
-        assert output == "[URS]"
+        results = self._render_events(events, width=25, run_spacing="")
+        assert results["default"] == "|{U}[RS]|"
+        assert results["spacing=1"] == "|{ U }[ R S ]|"
 
     def test_run_spacing_single_space(self):
         """run_spacing with single space adds gap between runs."""
@@ -429,9 +469,10 @@ class TestEventsModuleWithAsciiIcons:
             ("PostToolUse", "Read", None, None),
             ("Stop", None, None, None),
         ]
-        # With run_spacing=" ", extra space between user run (U) and main run (R S)
-        output = self._render_events(events, width=20, run_spacing=" ")
-        assert output == "[U RS]"
+        # With run_spacing="+", extra space between user run (U) and main run (R S)
+        results = self._render_events(events, width=30, run_spacing="+")
+        assert results["default"] == "|{U}+[RS]|"
+        assert results["spacing=1"] == "|{ U }+[ R S ]|"
 
     def test_run_spacing_multiple_runs(self):
         """run_spacing applies between each run transition."""
@@ -444,9 +485,10 @@ class TestEventsModuleWithAsciiIcons:
             ("Stop", None, None, None),
         ]
         # Gap after each run except the last
-        output = self._render_events(events, width=35, run_spacing=" ")
+        results = self._render_events(events, width=50, run_spacing="+")
         # user(U) + space + main(R S) + space + user(U) + space + main(E S)
-        assert output == "[U RS U ES]"
+        assert results["default"] == "|{U}+[RS]+{U}+[ES]|"
+        assert results["spacing=1"] == "|{ U }+[ R S ]+{ U }+[ E S ]|"
 
 
 class TestEventToIcon:
