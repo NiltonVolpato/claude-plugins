@@ -38,33 +38,32 @@ def render_markup(renderable, width: int = 40) -> str:
 
 
 # ASCII icon set for predictable test output
-# Using NBSP (\u00a0) like the real icons to match behavior
 ASCII_TOOL_ICONS = {
-    "Bash": "$\u00a0",
-    "Edit": "E\u00a0",
-    "Write": "W\u00a0",
-    "Read": "R\u00a0",
-    "Glob": "G\u00a0",
-    "Grep": "?\u00a0",
-    "Task": "T\u00a0",
-    "WebFetch": "@\u00a0",
-    "WebSearch": "@\u00a0",
+    "Bash": "$",
+    "Edit": "E",
+    "Write": "W",
+    "Read": "R",
+    "Glob": "G",
+    "Grep": "?",
+    "Task": "T",
+    "WebFetch": "@",
+    "WebSearch": "@",
 }
 
 ASCII_EVENT_ICONS = {
     "PostToolUse": None,
     "PostToolUseFailure": None,
-    "SubagentStart": ">\u00a0",
-    "SubagentStop": "<\u00a0",
-    "UserPromptSubmit": "U\u00a0",
-    "Stop": "S\u00a0",
-    "StopUndone": "~\u00a0",  # Stop that got cancelled by hook
-    "Interrupt": "X\u00a0",
+    "SubagentStart": ">",
+    "SubagentStop": "<",
+    "UserPromptSubmit": "U",
+    "Stop": "S",
+    "StopUndone": "~",  # Stop that got cancelled by hook
+    "Interrupt": "X",
 }
 
 ASCII_BASH_ICONS = {
-    "git": "g\u00a0",
-    "pytest": "p\u00a0",
+    "git": "g",
+    "pytest": "p",
 }
 
 
@@ -266,10 +265,7 @@ class TestEventsModuleWithAsciiIcons:
     def _render_events(
         self, events: list[EventTuple], width: int = 30, **theme_vars
     ) -> str:
-        """Render events with ASCII icons and return plain text output.
-
-        NBSPs are normalized to regular spaces for easier comparison.
-        """
+        """Render events with ASCII icons and return plain text output."""
         module = get_module("events")
         assert module is not None
         theme = {**DEFAULT_TEST_THEME_VARS, **theme_vars}
@@ -277,8 +273,7 @@ class TestEventsModuleWithAsciiIcons:
         result = module.render(inputs, theme)
         if result == "":
             return ""
-        # Normalize NBSP to regular space for comparison
-        return render_plain(result, width=width).replace("\u00a0", " ")
+        return render_plain(result, width=width)
 
     def test_empty_events_returns_empty_string(self):
         assert self._render_events([]) == ""
@@ -286,21 +281,21 @@ class TestEventsModuleWithAsciiIcons:
     def test_single_read_tool(self):
         """Single tool renders as a main run."""
         events: list[EventTuple] = [("PostToolUse", "Read", None, None)]
-        assert self._render_events(events, width=10) == "[R ]"
+        assert self._render_events(events, width=10) == "[R]"
 
     def test_single_edit_tool(self):
         events: list[EventTuple] = [("PostToolUse", "Edit", None, None)]
-        assert self._render_events(events, width=10) == "[E ]"
+        assert self._render_events(events, width=10) == "[E]"
 
     def test_user_prompt_submit(self):
         events: list[EventTuple] = [("UserPromptSubmit", None, None, None)]
         # UserPromptSubmit is a user run
-        assert self._render_events(events, width=10) == "[U ]"
+        assert self._render_events(events, width=10) == "[U]"
 
     def test_stop_event(self):
         """Stop event alone is a main run."""
         events: list[EventTuple] = [("Stop", None, None, None)]
-        assert self._render_events(events, width=10) == "[S ]"
+        assert self._render_events(events, width=10) == "[S]"
 
     def test_simple_turn_sequence(self):
         """UserPromptSubmit -> Read -> Stop becomes user run + main run."""
@@ -311,7 +306,7 @@ class TestEventsModuleWithAsciiIcons:
         ]
         # U is user run, R S is main run - uniform spacing within runs
         output = self._render_events(events, width=20)
-        assert output == "[U R S ]"
+        assert output == "[URS]"
 
     def test_multiple_tools_in_turn(self):
         """UserPromptSubmit -> Glob -> Read -> Read -> Stop"""
@@ -323,7 +318,7 @@ class TestEventsModuleWithAsciiIcons:
             ("Stop", None, None, None),
         ]
         output = self._render_events(events, width=25)
-        assert output == "[U G R R S ]"
+        assert output == "[UGRRS]"
 
     def test_subagent_sequence(self):
         """UserPromptSubmit -> SubagentStart -> Read -> SubagentStop -> Stop"""
@@ -337,22 +332,22 @@ class TestEventsModuleWithAsciiIcons:
         output = self._render_events(events, width=30)
         # user run (U) + main run with subagent markers (> R < S)
         # Subagent events are part of the main run
-        assert output == "[U > R < S ]"
+        assert output == "[U>R<S]"
 
     def test_bash_git_command(self):
         """Bash with git command uses git icon."""
         events: list[EventTuple] = [("PostToolUse", "Bash", None, "git status")]
-        assert self._render_events(events, width=10) == "[g ]"
+        assert self._render_events(events, width=10) == "[g]"
 
     def test_bash_pytest_command(self):
         """Bash with pytest command uses pytest icon."""
         events: list[EventTuple] = [("PostToolUse", "Bash", None, "pytest tests/")]
-        assert self._render_events(events, width=10) == "[p ]"
+        assert self._render_events(events, width=10) == "[p]"
 
     def test_bash_unknown_command_uses_default(self):
         """Bash with unknown command uses default bash icon."""
         events: list[EventTuple] = [("PostToolUse", "Bash", None, "echo hello")]
-        assert self._render_events(events, width=10) == "[$ ]"
+        assert self._render_events(events, width=10) == "[$]"
 
     def test_explicit_interrupt(self):
         """PostToolUseFailure with interrupt extra goes to user run."""
@@ -363,7 +358,7 @@ class TestEventsModuleWithAsciiIcons:
         ]
         output = self._render_events(events, width=20)
         # user run (U) + main run (R) + user run (X)
-        assert output == "[U R X ]"
+        assert output == "[URX]"
 
     def test_inferred_interrupt(self):
         """UserPromptSubmit without prior Stop infers interrupt."""
@@ -376,7 +371,7 @@ class TestEventsModuleWithAsciiIcons:
         ]
         output = self._render_events(events, width=25)
         # Synthetic interrupt inserted: user(U) + main(R) + user(X) + user(U) + main(S)
-        assert output == "[U R X U S ]"
+        assert output == "[URXUS]"
 
     def test_skip_redundant_subagent_stop(self):
         """SubagentStop immediately after Stop is skipped."""
@@ -388,7 +383,7 @@ class TestEventsModuleWithAsciiIcons:
         ]
         output = self._render_events(events, width=20)
         # SubagentStop skipped: user(U) + main(R S)
-        assert output == "[U R S ]"
+        assert output == "[URS]"
 
     def test_limit_truncates_events(self):
         """Limit parameter truncates older events."""
@@ -400,7 +395,7 @@ class TestEventsModuleWithAsciiIcons:
         ]
         # With limit=2, should only process last 2 events
         output = self._render_events(events, width=15, limit=2)
-        assert output == "[E W ]"
+        assert output == "[EW]"
 
     def test_two_complete_turns(self):
         """Two complete turns with different tools."""
@@ -414,7 +409,7 @@ class TestEventsModuleWithAsciiIcons:
         ]
         output = self._render_events(events, width=30)
         # user(U) + main(R S) + user(U) + main(E S)
-        assert output == "[U R S U E S ]"
+        assert output == "[URSUES]"
 
     def test_run_spacing_default_empty(self):
         """Default run_spacing (empty) has no gap between runs."""
@@ -425,7 +420,7 @@ class TestEventsModuleWithAsciiIcons:
         ]
         # With run_spacing="" (default), no extra gap between user run and main run
         output = self._render_events(events, width=20, run_spacing="")
-        assert output == "[U R S ]"
+        assert output == "[URS]"
 
     def test_run_spacing_single_space(self):
         """run_spacing with single space adds gap between runs."""
@@ -436,7 +431,7 @@ class TestEventsModuleWithAsciiIcons:
         ]
         # With run_spacing=" ", extra space between user run (U) and main run (R S)
         output = self._render_events(events, width=20, run_spacing=" ")
-        assert output == "[U  R S ]"
+        assert output == "[U RS]"
 
     def test_run_spacing_multiple_runs(self):
         """run_spacing applies between each run transition."""
@@ -451,17 +446,14 @@ class TestEventsModuleWithAsciiIcons:
         # Gap after each run except the last
         output = self._render_events(events, width=35, run_spacing=" ")
         # user(U) + space + main(R S) + space + user(U) + space + main(E S)
-        assert output == "[U  R S  U  E S ]"
+        assert output == "[U RS U ES]"
 
 
 class TestEventToIcon:
     """Tests for _event_to_icon method with ASCII icons."""
 
     def _get_icon(self, event: str, tool: str | None, extra: str | None) -> str:
-        """Get the plain text icon for an event.
-
-        NBSPs are normalized to regular spaces for easier comparison.
-        """
+        """Get the plain text icon for an event."""
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
@@ -477,34 +469,34 @@ class TestEventToIcon:
             backgrounds,
             line_bars,
         )
-        return text.plain.replace("\u00a0", " ") if text else ""
+        return text.plain if text else ""
 
     def test_read_tool(self):
-        assert self._get_icon("PostToolUse", "Read", None) == "R "
+        assert self._get_icon("PostToolUse", "Read", None) == "R"
 
     def test_edit_tool(self):
-        assert self._get_icon("PostToolUse", "Edit", None) == "E "
+        assert self._get_icon("PostToolUse", "Edit", None) == "E"
 
     def test_bash_git(self):
-        assert self._get_icon("PostToolUse", "Bash", "git status") == "g "
+        assert self._get_icon("PostToolUse", "Bash", "git status") == "g"
 
     def test_bash_default(self):
-        assert self._get_icon("PostToolUse", "Bash", "ls -la") == "$ "
+        assert self._get_icon("PostToolUse", "Bash", "ls -la") == "$"
 
     def test_user_prompt(self):
-        assert self._get_icon("UserPromptSubmit", None, None) == "U "
+        assert self._get_icon("UserPromptSubmit", None, None) == "U"
 
     def test_stop(self):
-        assert self._get_icon("Stop", None, None) == "S "
+        assert self._get_icon("Stop", None, None) == "S"
 
     def test_subagent_start(self):
-        assert self._get_icon("SubagentStart", None, None) == "> "
+        assert self._get_icon("SubagentStart", None, None) == ">"
 
     def test_subagent_stop(self):
-        assert self._get_icon("SubagentStop", None, None) == "< "
+        assert self._get_icon("SubagentStop", None, None) == "<"
 
     def test_interrupt(self):
-        assert self._get_icon("PostToolUseFailure", None, "interrupt") == "X "
+        assert self._get_icon("PostToolUseFailure", None, "interrupt") == "X"
 
     def test_unknown_event(self):
         assert self._get_icon("UnknownEvent", None, None) == ""
@@ -535,9 +527,8 @@ class TestEditWithLineCounts:
         plain = text.plain
         # Should have edit icon + green bar + placeholder space for deletions
         assert "▄" in plain  # 10 lines -> ▄
-        # Always 2 bar positions: icon(2) + bars(2) = 4
-        # No trailing NBSP needed for Edit with bars
-        assert width == 4, f"Expected width 4 but got {width}"
+        # Always 2 bar positions: icon(1) + bars(2) = 3
+        assert width == 3, f"Expected width 3 but got {width}"
 
     def test_edit_with_deletions_only(self):
         """Edit with only deletions shows placeholder space + red bar."""
@@ -551,8 +542,8 @@ class TestEditWithLineCounts:
         plain = text.plain
         # Should have edit icon + placeholder space + red bar
         assert "▆" in plain  # 50 lines -> ▆
-        # Always 2 bar positions: icon(2) + bars(2) = 4
-        assert width == 4, f"Expected width 4 but got {width}"
+        # Always 2 bar positions: icon(1) + bars(2) = 3
+        assert width == 3, f"Expected width 3 but got {width}"
 
     def test_edit_bars_always_two_positions(self):
         """Edit bars always occupy 2 character positions."""
@@ -568,8 +559,8 @@ class TestEditWithLineCounts:
         # +0-10: placeholder + deletion bar
         text3, width3 = module._event_to_icon("PostToolUse", "Edit", "+0-10", *args)
 
-        # All should have same width: icon(2) + bars(2) = 4
-        assert width1 == width2 == width3 == 4, (
+        # All should have same width: icon(1) + bars(2) = 3
+        assert width1 == width2 == width3 == 3, (
             f"Widths differ: {width1}, {width2}, {width3}"
         )
 
@@ -921,5 +912,5 @@ class TestStopUndoneDetection:
         bash_pos = plain.find("$")  # Bash default icon
         assert undo_pos != -1, f"Expected StopUndone (~): {repr(plain)}"
         assert bash_pos != -1, f"Expected Bash ($): {repr(plain)}"
-        # With spacing=0, they should be adjacent (just icon trailing spaces)
-        assert bash_pos == undo_pos + 2, f"StopUndone spacing wrong: {repr(plain)}"
+        # With spacing=0, they should be directly adjacent
+        assert bash_pos == undo_pos + 1, f"StopUndone spacing wrong: {repr(plain)}"
