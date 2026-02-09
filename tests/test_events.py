@@ -17,7 +17,7 @@ def render_plain(renderable, width: int = 40) -> str:
     console = Console(width=width, force_terminal=False, no_color=True)
     with console.capture() as capture:
         console.print(renderable, end="")
-    return capture.get()
+    return capture.get().rstrip("\n")
 
 
 def render_markup(renderable, width: int = 40) -> str:
@@ -107,15 +107,13 @@ class TestLinesToBar:
 def render_with_styles(renderable, width: int = 40) -> list:
     """Render and return the list of Segments with their styles."""
     console = Console(width=width, force_terminal=True)
-
-    class FakeOptions:
-        max_width = width
-
-    return list(renderable.__rich_console__(console, FakeOptions()))
+    lines = console.render_lines(renderable, pad=False)
+    # Flatten all lines into single list of segments
+    return [seg for line in lines for seg in line]
 
 
 class TestExpandableEventsRendering:
-    """Tests for ExpandableEvents with full output comparison."""
+    """Tests for ExpandableEvents with grid frame composition."""
 
     def _make_segment(self, text: str) -> EventSegment:
         """Create a simple EventSegment from plain text."""
@@ -133,14 +131,29 @@ class TestExpandableEventsRendering:
         t.append(text, style=bg)
         return EventSegment(t, t.cell_len)
 
+    def _framed(
+        self, segments: list[EventSegment], left: str = "[", right: str = "]", **kwargs
+    ):
+        """Create a framed ExpandableEvents using Table.grid."""
+        from rich.table import Table
+
+        events = ExpandableEvents(segments, **kwargs)
+        grid = Table.grid(padding=0)
+        grid.add_column()
+        grid.add_column()
+        grid.add_column()
+        grid.add_row(Text(left), events, Text(right))
+        return grid
+
     def test_empty_segments_renders_brackets_only(self):
-        events = ExpandableEvents([], left="[", right="]")
-        assert render_plain(events, width=10) == "[]"
+        framed = self._framed([])
+        # Table.grid gives middle column minimum 1 char width
+        assert render_plain(framed, width=10) == "[ ]"
 
     def test_single_segment_exact_output(self):
         seg = self._make_segment("ABC")
-        events = ExpandableEvents([seg], left="[", right="]")
-        assert render_plain(events, width=10) == "[ABC]"
+        framed = self._framed([seg])
+        assert render_plain(framed, width=10) == "[ABC]"
 
     def test_multiple_segments_exact_output(self):
         segments = [
@@ -148,8 +161,8 @@ class TestExpandableEventsRendering:
             self._make_segment("B"),
             self._make_segment("C"),
         ]
-        events = ExpandableEvents(segments, left="[", right="]")
-        assert render_plain(events, width=10) == "[ABC]"
+        framed = self._framed(segments)
+        assert render_plain(framed, width=10) == "[ABC]"
 
     def test_truncation_keeps_most_recent(self):
         segments = [
@@ -159,8 +172,8 @@ class TestExpandableEventsRendering:
             self._make_segment("D"),
         ]
         # Width 4 = "[" + 2 chars + "]"
-        events = ExpandableEvents(segments, left="[", right="]")
-        assert render_plain(events, width=4) == "[CD]"
+        framed = self._framed(segments)
+        assert render_plain(framed, width=4) == "[CD]"
 
     def test_truncation_with_wider_segments(self):
         segments = [
@@ -169,28 +182,28 @@ class TestExpandableEventsRendering:
             self._make_segment("CCC"),
         ]
         # Width 7 = "[" + 5 chars + "]" = can fit "CCC" (3) + crop 2 from "BBB"
-        events = ExpandableEvents(segments, left="[", right="]")
-        assert render_plain(events, width=7) == "[BBCCC]"
+        framed = self._framed(segments)
+        assert render_plain(framed, width=7) == "[BBCCC]"
 
     def test_expand_mode_pads_left(self):
         seg = self._make_segment("X")
-        events = ExpandableEvents([seg], left="[", right="]", expand=True)
-        assert render_plain(events, width=8) == "[     X]"
+        framed = self._framed([seg], expand=True)
+        assert render_plain(framed, width=8) == "[     X]"
 
     def test_expand_mode_exact_fit(self):
         seg = self._make_segment("ABC")
-        events = ExpandableEvents([seg], left="<", right=">", expand=True)
-        assert render_plain(events, width=5) == "<ABC>"
+        framed = self._framed([seg], left="<", right=">", expand=True)
+        assert render_plain(framed, width=5) == "<ABC>"
 
     def test_custom_brackets(self):
         seg = self._make_segment("X")
-        events = ExpandableEvents([seg], left="<<", right=">>")
-        assert render_plain(events, width=10) == "<<X>>"
+        framed = self._framed([seg], left="<<", right=">>")
+        assert render_plain(framed, width=10) == "<<X>>"
 
     def test_styled_segment_plain_output(self):
         seg = self._make_styled_segment("[red]R[/red]")
-        events = ExpandableEvents([seg], left="[", right="]")
-        assert render_plain(events, width=10) == "[R]"
+        framed = self._framed([seg])
+        assert render_plain(framed, width=10) == "[R]"
 
     def test_overflow_crops_segment_from_left(self):
         """When segments overflow, the overflow segment is cropped from left."""
@@ -201,8 +214,8 @@ class TestExpandableEventsRendering:
             self._make_bg_segment("CCC", "on #0000ff"),
         ]
         # Width 6 = "[" + 4 chars + "]" - fits CCC (3) + crop 1 char from BBB
-        events = ExpandableEvents(segments, left="[", right="]")
-        rendered_segments = render_with_styles(events, width=6)
+        framed = self._framed(segments)
+        rendered_segments = render_with_styles(framed, width=6)
 
         # Segment 0: left bracket "["
         assert rendered_segments[0].text == "["
@@ -218,10 +231,10 @@ class TestExpandableEventsRendering:
         """Cropping a segment preserves its styles correctly."""
         seg_red = self._make_bg_segment("RRR", "on #aa0000")
         seg_blue = self._make_bg_segment("BBB", "on #0000aa")
-        events = ExpandableEvents([seg_red, seg_blue], left="[", right="]")
+        framed = self._framed([seg_red, seg_blue])
 
         # Width 6 = "[" + 4 chars + "]" - fits BBB (3), crops 1 from RRR
-        rendered_segments = render_with_styles(events, width=6)
+        rendered_segments = render_with_styles(framed, width=6)
 
         # Cropped segment should be last char of RRR with red background
         crop_seg = rendered_segments[1]
@@ -664,11 +677,8 @@ class TestEditWithLineCounts:
         from rich.console import Console
 
         console = Console(force_terminal=True, width=80)
-
-        class FakeOptions:
-            max_width = 80
-
-        segments = list(result.__rich_console__(console, FakeOptions()))
+        lines = console.render_lines(result, pad=False)
+        segments = [seg for line in lines for seg in line]
 
         # The bar background should be #abcdef (171, 205, 239), not main bg #2a3a2a
         # Check that we have segments with the edit_bar background color

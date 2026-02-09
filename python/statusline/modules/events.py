@@ -5,10 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from rich.cells import cell_len
 from rich.measure import Measurement
-from rich.segment import Segment
-from rich.style import Style
+from rich.styled import Styled
+from rich.table import Table
 from rich.text import Text
 
 from statusline.config import ThemeVars
@@ -246,33 +245,19 @@ class EventSegment:
 class ExpandableEvents:
     """Rich renderable that displays events, truncating from the left to fit width."""
 
-    def __init__(
-        self,
-        segments: list[EventSegment],
-        *,
-        expand: bool = False,
-        left: str = "",
-        right: str = "",
-        background: str = "",
-    ):
+    def __init__(self, segments: list[EventSegment], *, expand: bool = False):
         self.segments = segments
         self.expand = expand
-        self.background = background
-        # Parse brackets as Rich markup
-        self.left = Text.from_markup(left) if left else Text()
-        self.right = Text.from_markup(right) if right else Text()
 
     def __rich_console__(self, console, options):
         width = options.max_width
-        frame_width = self.left.cell_len + self.right.cell_len
-        available = width - frame_width
 
         # Build from right (most recent), truncate from left
         result: list[EventSegment] = []
         used = 0
         overflow_seg = None  # The segment that didn't fit (for partial rendering)
         for seg in reversed(self.segments):
-            if used + seg.width > available:
+            if used + seg.width > width:
                 overflow_seg = seg  # Save for potential partial rendering
                 break
             result.append(seg)
@@ -280,7 +265,7 @@ class ExpandableEvents:
         result.reverse()
 
         # Calculate remaining space and handle partial first segment
-        remaining = available - used
+        remaining = width - used
         partial_text = None
         if remaining > 0 and overflow_seg is not None:
             # Crop the overflow segment to show only rightmost `remaining` characters
@@ -294,38 +279,18 @@ class ExpandableEvents:
             # Normal padding when expanding (events align right)
             partial_text = Text(" " * remaining)
 
-        # Parse overall background style
-        bg_style = Style.parse(self.background) if self.background else None
-
-        # Helper to yield segments with background applied
-        def yield_with_bg(segments):
-            for segment in segments:
-                if bg_style and segment.style:
-                    yield Segment(segment.text, segment.style + bg_style, segment.control)
-                elif bg_style:
-                    yield Segment(segment.text, bg_style, segment.control)
-                else:
-                    yield segment
-
-        # Yield left bracket
-        yield from yield_with_bg(self.left.render(console))
-
         # Yield partial/cropped segment if any
         if partial_text:
-            yield from yield_with_bg(partial_text.render(console))
+            yield from partial_text.render(console)
 
         # Yield each segment
         for seg in result:
-            yield from yield_with_bg(seg.text.render(console))
-
-        # Yield right bracket
-        yield from yield_with_bg(self.right.render(console))
+            yield from seg.text.render(console)
 
     def __rich_measure__(self, console, options):
-        frame_width = self.left.cell_len + self.right.cell_len
-        total = sum(seg.width for seg in self.segments) + frame_width
+        total = sum(seg.width for seg in self.segments)
         if self.expand:
-            return Measurement(frame_width, options.max_width)
+            return Measurement(0, options.max_width)
         return Measurement(total, total)
 
 
@@ -456,13 +421,23 @@ class EventsModule(Module):
             if width > 0:  # Only add non-empty runs
                 segments.append(EventSegment(text, width))
 
-        # Outer frame brackets and overall background
-        left = str(theme_vars["left"])
-        right = str(theme_vars["right"])
+        # Outer frame brackets
+        left = Text.from_markup(str(theme_vars["left"]))
+        right = Text.from_markup(str(theme_vars["right"]))
         background = str(theme_vars.get("background", ""))
-        return ExpandableEvents(
-            segments, expand=expand, left=left, right=right, background=background
-        )
+
+        # Build events renderable, apply background if set
+        events = ExpandableEvents(segments, expand=expand)
+        if background:
+            events = Styled(events, style=background)
+
+        # Compose frame with Table.grid (single row, no borders)
+        grid = Table.grid(padding=0)
+        grid.add_column()  # left bracket
+        grid.add_column(ratio=1 if expand else None)  # events
+        grid.add_column()  # right bracket
+        grid.add_row(left, events, right)
+        return grid
 
     def _event_to_icon(
         self,
