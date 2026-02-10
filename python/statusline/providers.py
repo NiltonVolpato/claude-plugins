@@ -165,7 +165,7 @@ class EventsInfoProvider(InputProvider):
         if not db_path.exists():
             return EventsInfo()
 
-        events = self._query_events(db_path, input.session_id, limit=500)
+        events = self._query_events(db_path, input.session_id, limit=250)
         return EventsInfo(events=events)
 
     def _get_db_path(self, cwd: str) -> Path:
@@ -342,7 +342,9 @@ class InputResolver:
         self._cache[input_type] = result
         return result
 
-    def resolve_for_module(self, input_types: list[type[InputModel]]) -> dict[str, InputModel]:
+    def resolve_for_module(
+        self, input_types: list[type[InputModel]]
+    ) -> dict[str, InputModel]:
         """Resolve all inputs for a module.
 
         Args:

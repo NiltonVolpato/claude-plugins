@@ -4,11 +4,8 @@ from rich.console import Console
 from rich.text import Text
 from statusline.input import EventsInfo, EventTuple, StatuslineInput
 from statusline.modules import get_module
-from statusline.modules.events import (
-    EventSegment,
-    ExpandableEvents,
-    _lines_to_bar,
-)
+from statusline.modules.events import _lines_to_bar
+from statusline.renderables import TruncateLeft
 from statusline.providers import EventsInfoProvider
 
 
@@ -18,23 +15,6 @@ def render_plain(renderable, width: int = 40) -> str:
     with console.capture() as capture:
         console.print(renderable, end="")
     return capture.get().rstrip("\n")
-
-
-def render_markup(renderable, width: int = 40) -> str:
-    """Render a Rich renderable and return the markup representation."""
-    if isinstance(renderable, ExpandableEvents):
-        # Build the text representation from segments
-        console = Console(width=width, force_terminal=False, record=True)
-        with console.capture():
-            console.print(renderable, end="")
-        # Get the Text object representation
-        text = Text()
-        text.append(renderable.left)
-        for seg in renderable.segments:
-            text.append_text(seg.text)
-        text.append(renderable.right)
-        return text.markup
-    return str(renderable)
 
 
 # ASCII icon set for predictable test output
@@ -112,32 +92,14 @@ def render_with_styles(renderable, width: int = 40) -> list:
     return [seg for line in lines for seg in line]
 
 
-class TestExpandableEventsRendering:
-    """Tests for ExpandableEvents with grid frame composition."""
+class TestTruncateLeftRendering:
+    """Tests for TruncateLeft with grid frame composition."""
 
-    def _make_segment(self, text: str) -> EventSegment:
-        """Create a simple EventSegment from plain text."""
-        t = Text(text)
-        return EventSegment(t, t.cell_len)
-
-    def _make_styled_segment(self, markup: str) -> EventSegment:
-        """Create an EventSegment from Rich markup."""
-        t = Text.from_markup(markup)
-        return EventSegment(t, t.cell_len)
-
-    def _make_bg_segment(self, text: str, bg: str = "on #2a3a2a") -> EventSegment:
-        """Create an EventSegment with background color."""
-        t = Text()
-        t.append(text, style=bg)
-        return EventSegment(t, t.cell_len)
-
-    def _framed(
-        self, segments: list[EventSegment], left: str = "[", right: str = "]", **kwargs
-    ):
-        """Create a framed ExpandableEvents using Table.grid."""
+    def _framed(self, content, left: str = "[", right: str = "]", **kwargs):
+        """Create a framed TruncateLeft using Table.grid."""
         from rich.table import Table
 
-        events = ExpandableEvents(segments, **kwargs)
+        events = TruncateLeft(content, **kwargs)
         grid = Table.grid(padding=0)
         grid.add_column()
         grid.add_column()
@@ -145,76 +107,53 @@ class TestExpandableEventsRendering:
         grid.add_row(Text(left), events, Text(right))
         return grid
 
-    def test_empty_segments_renders_brackets_only(self):
-        framed = self._framed([])
-        # Table.grid gives middle column minimum 1 char width
+    def test_empty_content_renders_brackets_only(self):
+        framed = self._framed(Text(""))
+        # Table.grid gives empty cells minimum width of 1
         assert render_plain(framed, width=10) == "[ ]"
 
-    def test_single_segment_exact_output(self):
-        seg = self._make_segment("ABC")
-        framed = self._framed([seg])
-        assert render_plain(framed, width=10) == "[ABC]"
-
-    def test_multiple_segments_exact_output(self):
-        segments = [
-            self._make_segment("A"),
-            self._make_segment("B"),
-            self._make_segment("C"),
-        ]
-        framed = self._framed(segments)
+    def test_single_text_exact_output(self):
+        framed = self._framed(Text("ABC"))
         assert render_plain(framed, width=10) == "[ABC]"
 
     def test_truncation_keeps_most_recent(self):
-        segments = [
-            self._make_segment("A"),
-            self._make_segment("B"),
-            self._make_segment("C"),
-            self._make_segment("D"),
-        ]
+        framed = self._framed(Text("ABCD"))
         # Width 4 = "[" + 2 chars + "]"
-        framed = self._framed(segments)
         assert render_plain(framed, width=4) == "[CD]"
 
-    def test_truncation_with_wider_segments(self):
-        segments = [
-            self._make_segment("AAA"),
-            self._make_segment("BBB"),
-            self._make_segment("CCC"),
-        ]
+    def test_truncation_with_styled_text(self):
+        text = Text()
+        text.append("AAA")
+        text.append("BBB")
+        text.append("CCC")
+        framed = self._framed(text)
         # Width 7 = "[" + 5 chars + "]" = can fit "CCC" (3) + crop 2 from "BBB"
-        framed = self._framed(segments)
         assert render_plain(framed, width=7) == "[BBCCC]"
 
     def test_expand_mode_pads_left(self):
-        seg = self._make_segment("X")
-        framed = self._framed([seg], expand=True)
+        framed = self._framed(Text("X"), expand=True)
         assert render_plain(framed, width=8) == "[     X]"
 
     def test_expand_mode_exact_fit(self):
-        seg = self._make_segment("ABC")
-        framed = self._framed([seg], left="<", right=">", expand=True)
+        framed = self._framed(Text("ABC"), left="<", right=">", expand=True)
         assert render_plain(framed, width=5) == "<ABC>"
 
     def test_custom_brackets(self):
-        seg = self._make_segment("X")
-        framed = self._framed([seg], left="<<", right=">>")
+        framed = self._framed(Text("X"), left="<<", right=">>")
         assert render_plain(framed, width=10) == "<<X>>"
 
-    def test_styled_segment_plain_output(self):
-        seg = self._make_styled_segment("[red]R[/red]")
-        framed = self._framed([seg])
+    def test_styled_text_plain_output(self):
+        framed = self._framed(Text.from_markup("[red]R[/red]"))
         assert render_plain(framed, width=10) == "[R]"
 
-    def test_overflow_crops_segment_from_left(self):
-        """When segments overflow, the overflow segment is cropped from left."""
-        # Create segments with background colors
-        segments = [
-            self._make_bg_segment("AAA", "on #ff0000"),
-            self._make_bg_segment("BBB", "on #00ff00"),
-            self._make_bg_segment("CCC", "on #0000ff"),
-        ]
+    def test_overflow_crops_from_left(self):
+        """When content overflows, it is cropped from left."""
+        text = Text()
+        text.append("AAA", style="on #ff0000")
+        text.append("BBB", style="on #00ff00")
+        text.append("CCC", style="on #0000ff")
+        framed = self._framed(text)
         # Width 6 = "[" + 4 chars + "]" - fits CCC (3) + crop 1 char from BBB
-        framed = self._framed(segments)
         rendered_segments = render_with_styles(framed, width=6)
 
         # Segment 0: left bracket "["
@@ -228,10 +167,11 @@ class TestExpandableEventsRendering:
         assert "#0000ff" in str(rendered_segments[2].style).lower()
 
     def test_overflow_crop_preserves_styles(self):
-        """Cropping a segment preserves its styles correctly."""
-        seg_red = self._make_bg_segment("RRR", "on #aa0000")
-        seg_blue = self._make_bg_segment("BBB", "on #0000aa")
-        framed = self._framed([seg_red, seg_blue])
+        """Cropping content preserves styles correctly."""
+        text = Text()
+        text.append("RRR", style="on #aa0000")
+        text.append("BBB", style="on #0000aa")
+        framed = self._framed(text)
 
         # Width 6 = "[" + 4 chars + "]" - fits BBB (3), crops 1 from RRR
         rendered_segments = render_with_styles(framed, width=6)
@@ -249,7 +189,6 @@ DEFAULT_TEST_THEME_VARS = {
     "event_icons": ASCII_EVENT_ICONS,
     "bash_icons": ASCII_BASH_ICONS,
     "spacing": 0,
-    "run_spacing": "",
     "limit": 30,
     "left": "|",
     "right": "|",
@@ -463,45 +402,6 @@ class TestEventsModuleWithAsciiIcons:
         assert results["default"] == "|{U}[RS]{U}[ES]|"
         assert results["spacing=1"] == "|{ U }[ R S ]{ U }[ E S ]|"
 
-    def test_run_spacing_default_empty(self):
-        """Default run_spacing (empty) has no gap between runs."""
-        events: list[EventTuple] = [
-            ("UserPromptSubmit", None, None, None),
-            ("PostToolUse", "Read", None, None),
-            ("Stop", None, None, None),
-        ]
-        # With run_spacing="" (default), no extra gap between user run and main run
-        results = self._render_events(events, width=25, run_spacing="")
-        assert results["default"] == "|{U}[RS]|"
-        assert results["spacing=1"] == "|{ U }[ R S ]|"
-
-    def test_run_spacing_single_space(self):
-        """run_spacing with single space adds gap between runs."""
-        events: list[EventTuple] = [
-            ("UserPromptSubmit", None, None, None),
-            ("PostToolUse", "Read", None, None),
-            ("Stop", None, None, None),
-        ]
-        # With run_spacing="+", extra space between user run (U) and main run (R S)
-        results = self._render_events(events, width=30, run_spacing="+")
-        assert results["default"] == "|{U}+[RS]|"
-        assert results["spacing=1"] == "|{ U }+[ R S ]|"
-
-    def test_run_spacing_multiple_runs(self):
-        """run_spacing applies between each run transition."""
-        events: list[EventTuple] = [
-            ("UserPromptSubmit", None, None, None),
-            ("PostToolUse", "Read", None, None),
-            ("Stop", None, None, None),
-            ("UserPromptSubmit", None, None, None),
-            ("PostToolUse", "Edit", None, None),
-            ("Stop", None, None, None),
-        ]
-        # Gap after each run except the last
-        results = self._render_events(events, width=50, run_spacing="+")
-        # user(U) + space + main(R S) + space + user(U) + space + main(E S)
-        assert results["default"] == "|{U}+[RS]+{U}+[ES]|"
-        assert results["spacing=1"] == "|{ U }+[ R S ]+{ U }+[ E S ]|"
 
 
 class TestEventToIcon:
@@ -514,7 +414,7 @@ class TestEventToIcon:
         module = EventsModule()
         backgrounds = {"edit_bar": "#4c4d4e"}
         line_bars = {"chars": LINE_BARS_CHARS, "thresholds": LINE_BARS_THRESHOLDS}
-        text, _ = module._event_to_icon(
+        text = module._event_to_icon(
             event,
             tool,
             extra,
@@ -575,7 +475,7 @@ class TestEditWithLineCounts:
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
-        text, width = module._event_to_icon(
+        text = module._event_to_icon(
             "PostToolUse", "Edit", "+10-0", *self._get_icon_call_args()
         )
         assert text is not None
@@ -583,14 +483,14 @@ class TestEditWithLineCounts:
         # Should have edit icon + green bar + placeholder space for deletions
         assert "▄" in plain  # 10 lines -> ▄
         # Always 2 bar positions: icon(1) + bars(2) = 3
-        assert width == 3, f"Expected width 3 but got {width}"
+        assert text.cell_len == 3, f"Expected width 3 but got {text.cell_len}"
 
     def test_edit_with_deletions_only(self):
         """Edit with only deletions shows placeholder space + red bar."""
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
-        text, width = module._event_to_icon(
+        text = module._event_to_icon(
             "PostToolUse", "Edit", "+0-50", *self._get_icon_call_args()
         )
         assert text is not None
@@ -598,7 +498,7 @@ class TestEditWithLineCounts:
         # Should have edit icon + placeholder space + red bar
         assert "▆" in plain  # 50 lines -> ▆
         # Always 2 bar positions: icon(1) + bars(2) = 3
-        assert width == 3, f"Expected width 3 but got {width}"
+        assert text.cell_len == 3, f"Expected width 3 but got {text.cell_len}"
 
     def test_edit_bars_always_two_positions(self):
         """Edit bars always occupy 2 character positions."""
@@ -608,22 +508,22 @@ class TestEditWithLineCounts:
         args = self._get_icon_call_args()
 
         # +5-2: both bars visible
-        text1, width1 = module._event_to_icon("PostToolUse", "Edit", "+5-2", *args)
+        text1 = module._event_to_icon("PostToolUse", "Edit", "+5-2", *args)
         # +10-0: addition bar + placeholder
-        text2, width2 = module._event_to_icon("PostToolUse", "Edit", "+10-0", *args)
+        text2 = module._event_to_icon("PostToolUse", "Edit", "+10-0", *args)
         # +0-10: placeholder + deletion bar
-        text3, width3 = module._event_to_icon("PostToolUse", "Edit", "+0-10", *args)
+        text3 = module._event_to_icon("PostToolUse", "Edit", "+0-10", *args)
 
         # All should have same width: icon(1) + bars(2) = 3
-        assert width1 == width2 == width3 == 3, (
-            f"Widths differ: {width1}, {width2}, {width3}"
+        assert text1.cell_len == text2.cell_len == text3.cell_len == 3, (
+            f"Widths differ: {text1.cell_len}, {text2.cell_len}, {text3.cell_len}"
         )
 
     def test_edit_with_both(self):
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
-        text, width = module._event_to_icon(
+        text = module._event_to_icon(
             "PostToolUse", "Edit", "+100-5", *self._get_icon_call_args()
         )
         assert text is not None
@@ -637,7 +537,7 @@ class TestEditWithLineCounts:
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
-        text, width = module._event_to_icon(
+        text = module._event_to_icon(
             "PostToolUse", "Edit", "+5-2", *self._get_icon_call_args()
         )
         assert text is not None

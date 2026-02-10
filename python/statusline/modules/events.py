@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from rich.measure import Measurement
 from rich.styled import Styled
 from rich.table import Table
 from rich.text import Text
@@ -13,6 +12,7 @@ from rich.text import Text
 from statusline.config import ThemeVars
 from statusline.input import EventsInfo, EventTuple, InputModel
 from statusline.modules import Module, register
+from statusline.renderables import TruncateLeft
 
 
 def _lines_to_bar(count: int, chars: str, thresholds: list[int]) -> str:
@@ -234,66 +234,6 @@ def preprocess_events(events: list[EventTuple]) -> list[ProcessedEvent]:
     return result
 
 
-class EventSegment:
-    """A single event segment with its display width and styled text."""
-
-    def __init__(self, text: Text, width: int):
-        self.text = text
-        self.width = width
-
-
-class ExpandableEvents:
-    """Rich renderable that displays events, truncating from the left to fit width."""
-
-    def __init__(self, segments: list[EventSegment], *, expand: bool = False):
-        self.segments = segments
-        self.expand = expand
-
-    def __rich_console__(self, console, options):
-        width = options.max_width
-
-        # Build from right (most recent), truncate from left
-        result: list[EventSegment] = []
-        used = 0
-        overflow_seg = None  # The segment that didn't fit (for partial rendering)
-        for seg in reversed(self.segments):
-            if used + seg.width > width:
-                overflow_seg = seg  # Save for potential partial rendering
-                break
-            result.append(seg)
-            used += seg.width
-        result.reverse()
-
-        # Calculate remaining space and handle partial first segment
-        remaining = width - used
-        partial_text = None
-        if remaining > 0 and overflow_seg is not None:
-            # Crop the overflow segment to show only rightmost `remaining` characters
-            # This preserves styles from the cropped portion
-            if overflow_seg.width > remaining:
-                partial_text = overflow_seg.text[-remaining:]
-            # If segment fits in remaining space, just include it fully
-            elif self.expand:
-                partial_text = Text(" " * (remaining - overflow_seg.width))
-        elif self.expand and remaining > 0:
-            # Normal padding when expanding (events align right)
-            partial_text = Text(" " * remaining)
-
-        # Yield partial/cropped segment if any
-        if partial_text:
-            yield from partial_text.render(console)
-
-        # Yield each segment
-        for seg in result:
-            yield from seg.text.render(console)
-
-    def __rich_measure__(self, console, options):
-        total = sum(seg.width for seg in self.segments)
-        if self.expand:
-            return Measurement(0, options.max_width)
-        return Measurement(total, total)
-
-
 @register
 class EventsModule(Module):
     """Displays a scrolling stream of activity icons."""
@@ -327,7 +267,7 @@ class EventsModule(Module):
         bash_icons = theme_vars["bash_icons"]
         line_bars = theme_vars["line_bars"]
 
-        # Configurable spacing (uniform within runs)
+        # Spacing between events within a run
         spacing = int(theme_vars["spacing"])
 
         # Background styles
@@ -342,47 +282,28 @@ class EventsModule(Module):
         bracket_mode = theme_vars["brackets"]
         brackets_config = theme_vars["run_brackets"]
 
-        # Build segments (one per run)
-        # Spacing between icons is `spacing` spaces. At run boundaries,
-        # we need an even number to split symmetrically.
-        # Boundary spacing is the next even number >= spacing.
-        # This ensures we can split it evenly: boundary_spacing // 2 on each side.
-        segments: list[EventSegment] = []
-        boundary_spacing = spacing + (spacing % 2)  # Round up to next even number
+        # Compute boundary spacing (symmetric padding at run edges)
+        boundary_spacing = spacing + (spacing % 2)  # Round up to even
         half_boundary = boundary_spacing // 2
-        run_spacing = theme_vars.get("run_spacing", "")
 
-        for run_idx, run in enumerate(runs):
+        # Build run renderables
+        run_renderables = []
+        for run in runs:
             bg = context_bg.get(run.context, "")
             brackets = brackets_config.get(run.context, ["", ""])
-            open_bracket, close_bracket = brackets if bracket_mode else ["", ""]
+            open_bracket, close_bracket = brackets if bracket_mode else ("", "")
 
-            # Build run content
+            # Build run content as Text (simpler than grid for edge spacing)
             text = Text()
-            width = 0
 
-            # Spacing before run (gap between runs)
-            if run_idx > 0 and run_spacing:
-                text.append(run_spacing)
-                width += len(run_spacing)
-
-            # Opening bracket (supports Rich markup)
-            if open_bracket:
-                open_text = Text.from_markup(open_bracket)
-                text.append_text(open_text)
-                width += open_text.cell_len
-
-            # Spacing at start of run (second half from previous run boundary)
-            # Add for all runs except the first one (run_idx 0)
-            # The ExpandableEvents renders segments in reverse order, so the last run is rendered first
+            # Leading space with background
             if half_boundary > 0:
                 text.append(" " * half_boundary, style=bg)
-                width += half_boundary
 
-            # Render each event in the run
-            first_in_run = True
+            # Add events with spacing between them
+            first = True
             for pe in run.events:
-                icon_text, icon_width = self._event_to_icon(
+                icon = self._event_to_icon(
                     pe.effective_event,
                     pe.tool,
                     pe.extra,
@@ -393,51 +314,55 @@ class EventsModule(Module):
                     line_bars,
                     segment_bg=bg,
                 )
-                if not icon_text:
+                if not icon:
                     continue
 
-                # Spacing before icon (except first in run)
-                if not first_in_run and spacing > 0:
+                if not first and spacing > 0:
                     text.append(" " * spacing, style=bg)
-                    width += spacing
+                text.append_text(icon)
+                first = False
 
-                text.append_text(icon_text)
-                width += icon_width
-                first_in_run = False
-
-            # Spacing at end of run (first half from next run boundary)
-            # Add for all runs except the first one (run_idx 0)
-            # The first run will be rendered last and has no preceding boundary
+            # Trailing space with background
             if half_boundary > 0:
                 text.append(" " * half_boundary, style=bg)
-                width += half_boundary
 
-            # Closing bracket (supports Rich markup)
-            if close_bracket:
-                close_text = Text.from_markup(close_bracket)
-                text.append_text(close_text)
-                width += close_text.cell_len
+            if not text.plain.strip():
+                continue
 
-            if width > 0:  # Only add non-empty runs
-                segments.append(EventSegment(text, width))
+            # Add brackets around the run
+            open_text = Text.from_markup(open_bracket) if open_bracket else Text("")
+            close_text = Text.from_markup(close_bracket) if close_bracket else Text("")
+
+            bracketed = Table.grid()
+            bracketed.add_row(open_text, text, close_text)
+            run_renderables.append(bracketed)
+
+        if not run_renderables:
+            return ""
+
+        # Combine all runs into a single grid
+        runs_grid = Table.grid()
+        for _ in run_renderables:
+            runs_grid.add_column()
+        runs_grid.add_row(*run_renderables)
 
         # Outer frame brackets
         left = Text.from_markup(str(theme_vars["left"]))
         right = Text.from_markup(str(theme_vars["right"]))
         background = str(theme_vars.get("background", ""))
 
-        # Build events renderable, apply background if set
-        events = ExpandableEvents(segments, expand=expand)
+        # Build events renderable with left-truncation
+        events = TruncateLeft(runs_grid, expand=expand)
         if background:
             events = Styled(events, style=background)
 
-        # Compose frame with Table.grid (single row, no borders)
-        grid = Table.grid(padding=0)
-        grid.add_column()  # left bracket
-        grid.add_column(ratio=1 if expand else None)  # events
-        grid.add_column()  # right bracket
-        grid.add_row(left, events, right)
-        return grid
+        # Compose frame with Table.grid
+        frame = Table.grid(padding=0)
+        frame.add_column()  # left bracket
+        frame.add_column(ratio=1 if expand else None)  # events
+        frame.add_column()  # right bracket
+        frame.add_row(left, events, right)
+        return frame
 
     def _event_to_icon(
         self,
@@ -450,8 +375,8 @@ class EventsModule(Module):
         backgrounds: dict,
         line_bars: dict,
         segment_bg: str | None = None,
-    ) -> tuple[Text | None, int]:
-        """Convert an event to its styled Text representation and display width.
+    ) -> Text | None:
+        """Convert an event to its styled Text representation.
 
         Args:
             segment_bg: Background style to apply to the icon. For Edit with bars,
@@ -464,8 +389,8 @@ class EventsModule(Module):
                 text = Text.from_markup(icon)
                 if segment_bg:
                     text.stylize(segment_bg)
-                return text, text.cell_len
-            return None, 0
+                return text
+            return None
 
         # Tool use events (or legacy events with tool but no event type)
         if tool and (event == "PostToolUse" or not event):
@@ -481,7 +406,7 @@ class EventsModule(Module):
                         text = Text.from_markup(icon)
                         if segment_bg:
                             text.stylize(segment_bg)
-                        return text, text.cell_len
+                        return text
             # For Edit, show line change bars (Write just shows icon)
             if tool == "Edit" and extra and extra.startswith("+"):
                 base_icon = tool_icons.get(tool, "✏")
@@ -502,18 +427,18 @@ class EventsModule(Module):
                     bar_bg = backgrounds["edit_bar"]
                     text.append(add_bar, style=f"green on {bar_bg}")
                     text.append(rem_bar, style=f"red on {bar_bg}")
-                    return text, text.cell_len
+                    return text
                 except (ValueError, IndexError):
                     pass
             icon = tool_icons.get(tool, "•")
             text = Text.from_markup(icon)
             if segment_bg:
                 text.stylize(segment_bg)
-            return text, text.cell_len
+            return text
         icon = event_icons.get(event, "")
         if icon:
             text = Text.from_markup(icon)
             if segment_bg:
                 text.stylize(segment_bg)
-            return text, text.cell_len
-        return None, 0
+            return text
+        return None
