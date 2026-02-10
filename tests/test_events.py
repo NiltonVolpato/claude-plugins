@@ -10,7 +10,7 @@ from statusline.config import (
 )
 from statusline.input import EventsInfo, EventTuple, StatuslineInput
 from statusline.modules import get_module
-from statusline.modules.events import _lines_to_bar
+from statusline.modules.event_renderables import _lines_to_bar
 from statusline.renderables import TruncateLeft
 from statusline.providers import EventsInfoProvider
 
@@ -418,34 +418,39 @@ class TestEventsModuleWithAsciiIcons:
 
 
 class TestEventToIcon:
-    """Tests for _event_to_icon method with ASCII icons."""
+    """Tests for event icon rendering with ASCII icons."""
 
     def _get_icon(self, event: str, tool: str | None, extra: str | None) -> str:
         """Get the plain text icon for an event."""
-        from statusline.modules.events import EventsModule
+        from rich.console import Console
 
-        module = EventsModule()
-        backgrounds = EventsBackgrounds(
-            main="on #2a3a2a",
-            user="on #3a2a2a",
-            subagent="on #2a2a3a",
-            edit_bar="#4c4d4e",
+        from statusline.modules.event_renderables import (
+            EventData,
+            EventStyle,
+            create_event,
         )
-        line_bars = EventsLineBars(
-            chars=LINE_BARS_CHARS,
-            thresholds=LINE_BARS_THRESHOLDS,
+
+        style = EventStyle(
+            tool_icons=ASCII_TOOL_ICONS,
+            event_icons=ASCII_EVENT_ICONS,
+            bash_icons=ASCII_BASH_ICONS,
+            backgrounds=EventsBackgrounds(
+                main="on #2a3a2a",
+                user="on #3a2a2a",
+                subagent="on #2a2a3a",
+                edit_bar="#4c4d4e",
+            ),
+            line_bars=EventsLineBars(
+                chars=LINE_BARS_CHARS,
+                thresholds=LINE_BARS_THRESHOLDS,
+            ),
         )
-        text = module._event_to_icon(
-            event,
-            tool,
-            extra,
-            ASCII_TOOL_ICONS,
-            ASCII_EVENT_ICONS,
-            ASCII_BASH_ICONS,
-            backgrounds,
-            line_bars,
-        )
-        return text.plain if text else ""
+        data = EventData(event=event, tool=tool, extra=extra)
+        renderable = create_event(data, style)
+        console = Console(force_terminal=True, width=80)
+        with console.capture() as capture:
+            console.print(renderable, end="")
+        return capture.get().strip()
 
     def test_read_tool(self):
         assert self._get_icon("PostToolUse", "Read", None) == "R"
@@ -481,33 +486,45 @@ class TestEventToIcon:
 class TestEditWithLineCounts:
     """Tests for Edit events with line count bars."""
 
-    def _get_icon_call_args(self):
-        """Get the common arguments for _event_to_icon calls."""
-        return (
-            ASCII_TOOL_ICONS,
-            ASCII_EVENT_ICONS,
-            ASCII_BASH_ICONS,
-            EventsBackgrounds(
+    def _get_style(self):
+        """Get the EventStyle for testing."""
+        from statusline.modules.event_renderables import EventStyle
+
+        return EventStyle(
+            tool_icons=ASCII_TOOL_ICONS,
+            event_icons=ASCII_EVENT_ICONS,
+            bash_icons=ASCII_BASH_ICONS,
+            backgrounds=EventsBackgrounds(
                 main="on #2a3a2a",
                 user="on #3a2a2a",
                 subagent="on #2a2a3a",
                 edit_bar="#4c4d4e",
             ),
-            EventsLineBars(
+            line_bars=EventsLineBars(
                 chars=LINE_BARS_CHARS,
                 thresholds=LINE_BARS_THRESHOLDS,
             ),
         )
 
+    def _render_edit(self, extra: str) -> Text:
+        """Render an Edit event and return the Text."""
+        from rich.console import Console
+
+        from statusline.modules.event_renderables import EditEvent, EventData
+
+        data = EventData(event="PostToolUse", tool="Edit", extra=extra)
+        renderable = EditEvent(data, self._get_style())
+        console = Console(force_terminal=True, width=80)
+        # Collect Text objects from the renderable
+        text = Text()
+        for segment in renderable.__rich_console__(console, console.options):
+            if isinstance(segment, Text):
+                text.append_text(segment)
+        return text
+
     def test_edit_with_additions_only(self):
         """Edit with only additions shows green bar + placeholder space."""
-        from statusline.modules.events import EventsModule
-
-        module = EventsModule()
-        text = module._event_to_icon(
-            "PostToolUse", "Edit", "+10-0", *self._get_icon_call_args()
-        )
-        assert text is not None
+        text = self._render_edit("+10-0")
         plain = text.plain
         # Should have edit icon + green bar + placeholder space for deletions
         assert "▄" in plain  # 10 lines -> ▄
@@ -516,13 +533,7 @@ class TestEditWithLineCounts:
 
     def test_edit_with_deletions_only(self):
         """Edit with only deletions shows placeholder space + red bar."""
-        from statusline.modules.events import EventsModule
-
-        module = EventsModule()
-        text = module._event_to_icon(
-            "PostToolUse", "Edit", "+0-50", *self._get_icon_call_args()
-        )
-        assert text is not None
+        text = self._render_edit("+0-50")
         plain = text.plain
         # Should have edit icon + placeholder space + red bar
         assert "▆" in plain  # 50 lines -> ▆
@@ -531,17 +542,12 @@ class TestEditWithLineCounts:
 
     def test_edit_bars_always_two_positions(self):
         """Edit bars always occupy 2 character positions."""
-        from statusline.modules.events import EventsModule
-
-        module = EventsModule()
-        args = self._get_icon_call_args()
-
         # +5-2: both bars visible
-        text1 = module._event_to_icon("PostToolUse", "Edit", "+5-2", *args)
+        text1 = self._render_edit("+5-2")
         # +10-0: addition bar + placeholder
-        text2 = module._event_to_icon("PostToolUse", "Edit", "+10-0", *args)
+        text2 = self._render_edit("+10-0")
         # +0-10: placeholder + deletion bar
-        text3 = module._event_to_icon("PostToolUse", "Edit", "+0-10", *args)
+        text3 = self._render_edit("+0-10")
 
         # All should have same width: icon(1) + bars(2) = 3
         assert text1.cell_len == text2.cell_len == text3.cell_len == 3, (
@@ -549,13 +555,7 @@ class TestEditWithLineCounts:
         )
 
     def test_edit_with_both(self):
-        from statusline.modules.events import EventsModule
-
-        module = EventsModule()
-        text = module._event_to_icon(
-            "PostToolUse", "Edit", "+100-5", *self._get_icon_call_args()
-        )
-        assert text is not None
+        text = self._render_edit("+100-5")
         plain = text.plain
         # Should have both bars
         assert "▇" in plain  # 100 lines -> ▇
@@ -563,13 +563,7 @@ class TestEditWithLineCounts:
 
     def test_edit_bars_have_edit_bar_background(self):
         """Edit bars should have edit_bar background, not segment background."""
-        from statusline.modules.events import EventsModule
-
-        module = EventsModule()
-        text = module._event_to_icon(
-            "PostToolUse", "Edit", "+5-2", *self._get_icon_call_args()
-        )
-        assert text is not None
+        text = self._render_edit("+5-2")
 
         # Check that the bar spans have the edit_bar background
         # Rich stores styles, we need to check the markup or spans

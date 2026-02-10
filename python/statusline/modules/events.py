@@ -12,22 +12,12 @@ from rich.text import Text
 from statusline.config import (
     EventsBackgrounds,
     EventsConfig,
-    EventsLineBars,
     ModuleConfigUnion,
 )
 from statusline.input import EventsInfo, EventTuple, InputModel
 from statusline.modules import Module, register
+from statusline.modules.event_renderables import EventData, EventStyle, create_event
 from statusline.renderables import TruncateLeft
-
-
-def _lines_to_bar(count: int, chars: str, thresholds: list[int]) -> str:
-    """Convert line count to a bar character (\u00a0 if 0)."""
-    if count <= 0:
-        return "\u00a0"  # Non-breaking space: invisible bar
-    for i, threshold in enumerate(thresholds):
-        if count < threshold:
-            return chars[i]
-    return chars[-1]
 
 
 @dataclass
@@ -270,12 +260,6 @@ class EventsModule(Module):
         if not runs:
             return ""
 
-        # Get icon mappings from config
-        tool_icons = config.tool_icons
-        event_icons = config.event_icons
-        bash_icons = config.bash_icons
-        line_bars = config.line_bars
-
         # Spacing between events within a run
         spacing = config.spacing
 
@@ -302,22 +286,27 @@ class EventsModule(Module):
             brackets = getattr(brackets_config, run.context, ("", ""))
             open_bracket, close_bracket = brackets if bracket_mode else ("", "")
 
-            # Convert events to icons (filtering None)
+            # Create EventStyle for this run context
+            style = EventStyle(
+                tool_icons=config.tool_icons,
+                event_icons=config.event_icons,
+                bash_icons=config.bash_icons,
+                backgrounds=backgrounds,
+                line_bars=config.line_bars,
+                segment_bg=bg,
+            )
+
+            # Convert events to renderables
             icons = []
             for pe in run.events:
-                icon = self._event_to_icon(
-                    pe.effective_event,
-                    pe.tool,
-                    pe.extra,
-                    tool_icons,
-                    event_icons,
-                    bash_icons,
-                    backgrounds,
-                    line_bars,
-                    segment_bg=bg,
+                data = EventData(
+                    event=pe.effective_event,
+                    tool=pe.tool,
+                    agent_id=pe.agent_id,
+                    extra=pe.extra,
                 )
-                if icon:
-                    icons.append(icon)
+                event_renderable = create_event(data, style)
+                icons.append(event_renderable)
 
             if not icons:
                 continue
@@ -380,93 +369,3 @@ class EventsModule(Module):
         frame.add_column()  # right bracket
         frame.add_row(left, events, right)
         return frame
-
-    def _event_to_icon(
-        self,
-        event: str,
-        tool: str | None,
-        extra: str | None,
-        tool_icons: dict[str, str],
-        event_icons: dict[str, str],
-        bash_icons: dict[str, str],
-        backgrounds: EventsBackgrounds,
-        line_bars: EventsLineBars,
-        segment_bg: str | None = None,
-    ) -> Text | None:
-        """Convert an event to its styled Text representation.
-
-        Args:
-            segment_bg: Background style to apply to the icon. For Edit with bars,
-                        this is applied to the icon but not the bars.
-        """
-        # PostToolUseFailure with interrupt flag -> show as Interrupt
-        if event == "PostToolUseFailure" and extra == "interrupt":
-            icon = event_icons.get("Interrupt", "")
-            if icon:
-                text = Text.from_markup(icon)
-                if segment_bg:
-                    text.stylize(segment_bg)
-                return text
-            return None
-
-        # Tool use events (or legacy events with tool but no event type)
-        if tool and (event == "PostToolUse" or not event):
-            # For Bash, check if there's a command-specific icon
-            if tool == "Bash" and extra:
-                # Get first word and strip path prefix (e.g., /usr/bin/git -> git)
-                words = extra.split()
-                if words:
-                    first_word = words[0]
-                    cmd = first_word.split("/")[-1]
-                    if cmd in bash_icons:
-                        icon = bash_icons[cmd]
-                        text = Text.from_markup(icon)
-                        if segment_bg:
-                            text.stylize(segment_bg)
-                        return text
-            # For Edit, show line change bars (Write just shows icon)
-            if tool == "Edit" and extra and extra.startswith("+"):
-                base_icon = tool_icons.get(tool, "✏")
-                try:
-                    # Parse "+N-M" format
-                    parts = extra[1:].split("-")
-                    added = int(parts[0]) if parts[0] else 0
-                    removed = int(parts[1]) if len(parts) > 1 and parts[1] else 0
-                    chars = line_bars.chars
-                    thresholds = line_bars.thresholds
-                    add_bar = _lines_to_bar(added, chars, thresholds)
-                    rem_bar = _lines_to_bar(removed, chars, thresholds)
-                    # Always show 2 bar positions (additions + deletions)
-                    # _lines_to_bar returns NBSP for 0 (invisible bar)
-                    text = Text.from_markup(base_icon)
-                    if segment_bg:
-                        text.stylize(segment_bg)
-                    bar_bg = backgrounds.edit_bar
-                    text.append(add_bar, style=f"green on {bar_bg}")
-                    text.append(rem_bar, style=f"red on {bar_bg}")
-                    return text
-                except (ValueError, IndexError):
-                    pass
-            # TaskUpdate: different icons based on status
-            if tool == "TaskUpdate" and extra and extra.startswith("status="):
-                status = extra[7:]  # Remove "status=" prefix
-                if status == "completed":
-                    icon = tool_icons.get("TaskUpdate:completed", tool_icons.get(tool, "•"))
-                else:
-                    icon = tool_icons.get("TaskUpdate:other", tool_icons.get(tool, "•"))
-                text = Text.from_markup(icon)
-                if segment_bg:
-                    text.stylize(segment_bg)
-                return text
-            icon = tool_icons.get(tool, "•")
-            text = Text.from_markup(icon)
-            if segment_bg:
-                text.stylize(segment_bg)
-            return text
-        icon = event_icons.get(event, "")
-        if icon:
-            text = Text.from_markup(icon)
-            if segment_bg:
-                text.stylize(segment_bg)
-            return text
-        return None
