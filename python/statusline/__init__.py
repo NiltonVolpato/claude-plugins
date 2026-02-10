@@ -105,15 +105,14 @@ def merge_cli_options(
     new_theme = theme if theme else config.theme
     new_modules = config.modules
 
-    # If theme changed, rebuild modules with new theme
+    # If theme changed, update modules with new theme
     if new_theme != config.theme:
-        # Rebuild each module config with the new theme
-        # The model_validator in BaseModuleConfig handles theme override application
+        # Assignment triggers model_validator to apply new theme's overrides
         new_modules = {}
         for name, module_config in config.modules.items():
-            data = module_config.model_dump()
-            data["theme"] = new_theme
-            new_modules[name] = type(module_config).model_validate(data)
+            new_cfg = module_config.model_copy()
+            new_cfg.theme = new_theme
+            new_modules[name] = new_cfg
 
     return Config(
         theme=new_theme,

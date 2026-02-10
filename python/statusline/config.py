@@ -5,9 +5,9 @@ from __future__ import annotations
 import importlib.resources
 import tomllib
 from pathlib import Path
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal, Self, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from statusline.errors import report_error
 
@@ -105,33 +105,39 @@ class EventsTheme(BaseModel):
 # Base Module Config with Theme Application
 # =============================================================================
 
+
 class BaseModuleConfig(BaseModel):
     """Base class for all module configs.
 
-    The model_validator applies theme overrides before parsing.
-    All default values come from TOML, not Python code.
+    The model_validator applies theme overrides on construction and when
+    theme changes (via validate_assignment). All defaults come from TOML.
     """
+
+    model_config = ConfigDict(validate_assignment=True)
 
     type: str  # Required - discriminator field
     theme: str = ""  # Selected theme name (set by config loading)
     themes: dict[str, Any] = Field(default_factory=dict)
     expand: bool = False
 
-    @model_validator(mode="before")
-    @classmethod
-    def apply_theme_overrides(cls, data: Any) -> Any:
-        """Apply selected theme's overrides to config data before parsing."""
-        if not isinstance(data, dict):
-            return data
-        theme_name = data.get("theme", "")
-        themes = data.get("themes", {})
-        if not theme_name or theme_name not in themes:
-            return data
-        theme_overrides = themes[theme_name]
+    @model_validator(mode="after")
+    def apply_theme_overrides(self) -> Self:
+        """Apply selected theme's overrides to this config."""
+        if self.theme not in self.themes:
+            return self
+        theme_overrides = self.themes[self.theme]
         if not isinstance(theme_overrides, dict):
-            return data
-        # Deep-merge theme overrides onto the base data
-        return _deep_merge(data, theme_overrides)
+            return self
+        for field, value in theme_overrides.items():
+            if field in ("theme", "themes"):  # Don't override meta fields
+                continue
+            current = getattr(self, field, None)
+            # Deep-merge nested models
+            if current is not None and hasattr(current, "model_dump"):
+                merged = _deep_merge(current.model_dump(), value)
+                value = type(current).model_validate(merged)
+            object.__setattr__(self, field, value)
+        return self
 
 
 # =============================================================================
