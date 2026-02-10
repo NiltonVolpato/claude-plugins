@@ -447,6 +447,17 @@ class EventsModule(Module):
                     return text
                 except (ValueError, IndexError):
                     pass
+            # TaskUpdate: different icons based on status
+            if tool == "TaskUpdate" and extra and extra.startswith("status="):
+                status = extra[7:]  # Remove "status=" prefix
+                if status == "completed":
+                    icon = tool_icons.get("TaskUpdate:completed", tool_icons.get(tool, "•"))
+                else:
+                    icon = tool_icons.get("TaskUpdate:other", tool_icons.get(tool, "•"))
+                text = Text.from_markup(icon)
+                if segment_bg:
+                    text.stylize(segment_bg)
+                return text
             icon = tool_icons.get(tool, "•")
             text = Text.from_markup(icon)
             if segment_bg:

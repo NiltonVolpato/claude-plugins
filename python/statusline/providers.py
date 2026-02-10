@@ -236,6 +236,11 @@ class EventsInfoProvider(InputProvider):
             new_lines = (new.count("\n") + 1) if new else 0
             return f"+{new_lines}-{old_lines}"
 
+        # TaskUpdate status
+        if tool == "TaskUpdate":
+            status = tool_input.get("status")
+            return f"status={status}" if status else None
+
         return None
 
 
