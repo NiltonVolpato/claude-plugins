@@ -107,19 +107,12 @@ def merge_cli_options(
 
     # If theme changed, rebuild modules with new theme
     if new_theme != config.theme:
-        from statusline.config import _deep_merge
-
         # Rebuild each module config with the new theme
+        # The model_validator in BaseModuleConfig handles theme override application
         new_modules = {}
         for name, module_config in config.modules.items():
-            # Get the raw data and update theme
             data = module_config.model_dump()
             data["theme"] = new_theme
-            # Re-apply theme overrides by reconstructing the config
-            if new_theme in data.get("themes", {}):
-                theme_overrides = data["themes"][new_theme]
-                data = _deep_merge(data, theme_overrides)
-            # Create new config of same type
             new_modules[name] = type(module_config).model_validate(data)
 
     return Config(
