@@ -293,15 +293,8 @@ class EventsModule(Module):
             brackets = brackets_config.get(run.context, ["", ""])
             open_bracket, close_bracket = brackets if bracket_mode else ("", "")
 
-            # Build run content as Text (simpler than grid for edge spacing)
-            text = Text()
-
-            # Leading space with background
-            if half_boundary > 0:
-                text.append(" " * half_boundary, style=bg)
-
-            # Add events with spacing between them
-            first = True
+            # Convert events to icons (filtering None)
+            icons = []
             for pe in run.events:
                 icon = self._event_to_icon(
                     pe.effective_event,
@@ -314,27 +307,42 @@ class EventsModule(Module):
                     line_bars,
                     segment_bg=bg,
                 )
-                if not icon:
-                    continue
+                if icon:
+                    icons.append(icon)
 
-                if not first and spacing > 0:
-                    text.append(" " * spacing, style=bg)
-                text.append_text(icon)
-                first = False
-
-            # Trailing space with background
-            if half_boundary > 0:
-                text.append(" " * half_boundary, style=bg)
-
-            if not text.plain.strip():
+            if not icons:
                 continue
+
+            # Inner grid: events with between-event spacing
+            # Rich grid padding does NOT add space after last column
+            inner = Table.grid(padding=(0, spacing, 0, 0))
+            for _ in icons:
+                inner.add_column()
+            inner.add_row(*icons)
+
+            # Apply background style to inner grid (flows into padding)
+            styled_inner = Styled(inner, style=bg) if bg else inner
+
+            # Add edge spacing only if needed (Table.grid gives empty cells min width 1)
+            if half_boundary > 0:
+                run_content = Table.grid(padding=0)
+                run_content.add_column()  # leading edge
+                run_content.add_column()  # inner content
+                run_content.add_column()  # trailing edge
+                run_content.add_row(
+                    Text(" " * half_boundary, style=bg),
+                    styled_inner,
+                    Text(" " * half_boundary, style=bg),
+                )
+            else:
+                run_content = styled_inner
 
             # Add brackets around the run
             open_text = Text.from_markup(open_bracket) if open_bracket else Text("")
             close_text = Text.from_markup(close_bracket) if close_bracket else Text("")
 
             bracketed = Table.grid()
-            bracketed.add_row(open_text, text, close_text)
+            bracketed.add_row(open_text, run_content, close_text)
             run_renderables.append(bracketed)
 
         if not run_renderables:
