@@ -102,13 +102,33 @@ def merge_cli_options(
     width: int | None = None,
 ) -> Config:
     """Merge CLI options into config, with CLI taking precedence."""
+    new_theme = theme if theme else config.theme
+    new_modules = config.modules
+
+    # If theme changed, rebuild modules with new theme
+    if new_theme != config.theme:
+        from statusline.config import _deep_merge
+
+        # Rebuild each module config with the new theme
+        new_modules = {}
+        for name, module_config in config.modules.items():
+            # Get the raw data and update theme
+            data = module_config.model_dump()
+            data["theme"] = new_theme
+            # Re-apply theme overrides by reconstructing the config
+            if new_theme in data.get("themes", {}):
+                theme_overrides = data["themes"][new_theme]
+                data = _deep_merge(data, theme_overrides)
+            # Create new config of same type
+            new_modules[name] = type(module_config).model_validate(data)
+
     return Config(
-        theme=theme if theme else config.theme,
+        theme=new_theme,
         color=color,
         enabled=parse_modules(modules) if modules else config.enabled,
         separator=separator if separator is not None else config.separator,
         width=width if width is not None else config.width,
-        modules=config.modules,
+        modules=new_modules,
     )
 
 
@@ -295,7 +315,8 @@ def module_info(
     module_config = config.modules.get(name)
     if module_config:
         module_type = module_config.type
-        module_format = markup.escape(format_string(module_config.format))
+        fmt = getattr(module_config, "format", None)
+        module_format = markup.escape(format_string(fmt)) if fmt else None
     else:
         module_type = name
         module_format = None

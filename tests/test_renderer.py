@@ -1,9 +1,10 @@
 """Unit tests for statusline renderer."""
 
+import tempfile
 from pathlib import Path
 
 import pytest
-from statusline.config import Config, ModuleConfig, load_config
+from statusline.config import Config, ModelConfig, WorkspaceConfig, load_config
 from statusline.errors import StatuslineError
 from statusline.input import (
     ContextWindowInfo,
@@ -36,10 +37,47 @@ def make_input(
 def make_config(**kwargs: object) -> Config:
     """Create a Config using defaults and overriding with kwargs.
 
-    Uses /dev/null as config path to avoid loading user config for hermeticity.
+    Creates a temporary TOML file with the overrides so theme is properly
+    injected into modules during parsing.
     """
-    config = load_config(Path("/dev/null"))
-    return config.model_copy(update=kwargs)
+    import json
+
+    # Build TOML content from kwargs
+    toml_lines = []
+    for key, value in kwargs.items():
+        if key == "enabled":
+            if isinstance(value, list):
+                toml_lines.append(f"enabled = {json.dumps(value)}")
+            elif isinstance(value, dict):
+                # Handle multi-row with left/right alignment
+                for row_key, row_value in value.items():
+                    if isinstance(row_value, list):
+                        toml_lines.append(f"enabled.{row_key} = {json.dumps(row_value)}")
+                    elif isinstance(row_value, dict):
+                        if "left" in row_value:
+                            toml_lines.append(
+                                f"enabled.{row_key}.left = {json.dumps(row_value['left'])}"
+                            )
+                        if "right" in row_value:
+                            toml_lines.append(
+                                f"enabled.{row_key}.right = {json.dumps(row_value['right'])}"
+                            )
+        elif key == "modules":
+            # modules need special handling, skip for now
+            pass
+        elif isinstance(value, bool):
+            toml_lines.append(f"{key} = {'true' if value else 'false'}")
+        elif isinstance(value, str):
+            toml_lines.append(f'{key} = "{value}"')
+        elif isinstance(value, int):
+            toml_lines.append(f"{key} = {value}")
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+        f.write("\n".join(toml_lines))
+        f.flush()
+        config = load_config(Path(f.name))
+        Path(f.name).unlink()
+    return config
 
 
 class TestRenderer:
@@ -158,21 +196,21 @@ class TestRendererWithAliases:
             theme="minimal",
             color=False,
         )
-        config = config.model_copy(
-            update={
-                "modules": {
-                    **config.modules,
-                    "model_one": ModuleConfig(
-                        type="model",
-                        format="{{ model.display_name }}",
-                    ),
-                    "model_two": ModuleConfig(
-                        type="model",
-                        format="[{{ model.display_name }}]",
-                    ),
-                }
-            }
+        # Add alias modules with proper typed configs
+        modules = dict(config.modules)
+        modules["model_one"] = ModelConfig(
+            type="model",
+            color="cyan",
+            format="{{ model.display_name }}",
+            theme="minimal",
         )
+        modules["model_two"] = ModelConfig(
+            type="model",
+            color="cyan",
+            format="[{{ model.display_name }}]",
+            theme="minimal",
+        )
+        config = config.model_copy(update={"modules": modules})
 
         result = render_statusline(input_data, config)
         assert "Test Model" in result
@@ -187,17 +225,15 @@ class TestRendererWithAliases:
             theme="minimal",
             color=False,
         )
-        config = config.model_copy(
-            update={
-                "modules": {
-                    **config.modules,
-                    "ws_alias": ModuleConfig(
-                        type="workspace",
-                        format="Dir: {{ workspace.current_dir | basename }}",
-                    ),
-                }
-            }
+        # Add alias with proper typed config
+        modules = dict(config.modules)
+        modules["ws_alias"] = WorkspaceConfig(
+            type="workspace",
+            color="blue",
+            format="Dir: {{ workspace.current_dir | basename }}",
+            theme="minimal",
         )
+        config = config.model_copy(update={"modules": modules})
 
         result = render_statusline(input_data, config)
         assert "Test Model" in result

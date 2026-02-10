@@ -5,7 +5,9 @@ from pathlib import Path
 
 from statusline.config import (
     Config,
-    ModuleConfig,
+    ContextConfig,
+    EventsConfig,
+    ModelConfig,
     RowLayout,
     generate_default_config_toml,
     load_config,
@@ -14,33 +16,46 @@ from statusline.config import (
 
 
 class TestModuleConfig:
-    def test_default_values(self):
-        config = ModuleConfig()
-        assert config.type is None
-        assert config.color == ""
-        assert config.theme is None
-        assert config.themes == {}
+    """Tests for typed module configs."""
 
-    def test_custom_values(self):
-        config = ModuleConfig(
-            color="red",
-            theme="ascii",
-            themes={"nerd": {"label": ""}},
+    def test_model_config_basic(self):
+        """ModelConfig can be created with required fields."""
+        config = ModelConfig(
+            type="model",
+            color="cyan",
+            format="test format",
+            theme="nerd",
         )
-        assert config.color == "red"
-        assert config.theme == "ascii"
-        assert config.themes["nerd"]["label"] == ""
+        assert config.type == "model"
+        assert config.color == "cyan"
+        assert config.format == "test format"
 
-    def test_type_field(self):
-        config = ModuleConfig(type="context")
-        assert config.type == "context"
+    def test_theme_override_applied(self):
+        """Theme overrides are applied via model_validator."""
+        config = ModelConfig(
+            type="model",
+            color="cyan",
+            format="base format",
+            label="base label",
+            theme="nerd",
+            themes={"nerd": {"label": "nerd label", "color": "blue"}},
+        )
+        # Theme override should be applied
+        assert config.label == "nerd label"
+        assert config.color == "blue"
+        # Non-overridden field keeps base value
+        assert config.format == "base format"
 
     def test_expand_defaults_to_false(self):
-        config = ModuleConfig()
+        config = ModelConfig(
+            type="model", color="cyan", format="test", theme="nerd"
+        )
         assert config.expand is False
 
     def test_expand_set_to_true(self):
-        config = ModuleConfig(expand=True)
+        config = ModelConfig(
+            type="model", color="cyan", format="test", theme="nerd", expand=True
+        )
         assert config.expand is True
 
 
@@ -66,64 +81,88 @@ class TestConfig:
     def test_get_module_config(self):
         config = Config(
             modules={
-                "model": ModuleConfig(color="red", theme="ascii"),
+                "model": ModelConfig(
+                    type="model", color="red", format="test", theme="ascii"
+                ),
             }
         )
         module_config = config.get_module_config("model")
+        assert module_config is not None
+        assert isinstance(module_config, ModelConfig)
         assert module_config.color == "red"
         assert module_config.theme == "ascii"
 
     def test_get_module_config_missing(self):
         config = Config()
         module_config = config.get_module_config("unknown")
-        assert module_config.color == ""
-        assert module_config.theme is None
+        assert module_config is None
 
-    def test_get_theme_vars(self):
+    def test_theme_override_in_config(self):
+        """Theme overrides are applied when config is created."""
         config = Config(
             theme="nerd",
             modules={
-                "model": ModuleConfig(
+                "model": ModelConfig(
+                    type="model",
+                    color="cyan",
+                    format="base",
+                    label="base label",
+                    theme="nerd",
                     themes={
-                        "nerd": {"label": ""},
-                        "ascii": {"label": "Model:"},
-                    }
-                ),
-            },
-        )
-        theme_vars = config.get_theme_vars("model")
-        assert theme_vars == {"label": ""}
-
-    def test_get_theme_vars_with_module_override(self):
-        config = Config(
-            theme="nerd",
-            modules={
-                "model": ModuleConfig(
-                    theme="ascii",  # Override global theme
-                    themes={
-                        "nerd": {"label": ""},
+                        "nerd": {"label": "nerd icon"},
                         "ascii": {"label": "Model:"},
                     },
                 ),
             },
         )
-        theme_vars = config.get_theme_vars("model")
-        assert theme_vars == {"label": "Model:"}
+        module_config = config.get_module_config("model")
+        assert module_config is not None
+        assert isinstance(module_config, ModelConfig)
+        # Theme override applied
+        assert module_config.label == "nerd icon"
 
-    def test_get_module_type_without_type_field(self):
-        """When no type field, alias is the module type."""
+    def test_per_module_theme_override(self):
+        """Per-module theme setting overrides global theme."""
+        config = Config(
+            theme="nerd",
+            modules={
+                "model": ModelConfig(
+                    type="model",
+                    color="cyan",
+                    format="base",
+                    label="base",
+                    theme="ascii",  # Override global theme
+                    themes={
+                        "nerd": {"label": "nerd icon"},
+                        "ascii": {"label": "Model:"},
+                    },
+                ),
+            },
+        )
+        module_config = config.get_module_config("model")
+        assert module_config is not None
+        assert isinstance(module_config, ModelConfig)
+        # ASCII theme override applied
+        assert module_config.label == "Model:"
+
+    def test_get_module_type(self):
+        """get_module_type returns the type field."""
         config = Config(
             modules={
-                "model": ModuleConfig(color="red"),
+                "model": ModelConfig(
+                    type="model", color="red", format="test", theme="nerd"
+                ),
             }
         )
         assert config.get_module_type("model") == "model"
 
-    def test_get_module_type_with_type_field(self):
-        """When type field present, use it instead of alias."""
+    def test_get_module_type_with_alias(self):
+        """Aliases use type field from config."""
         config = Config(
             modules={
-                "ctx_percent": ModuleConfig(type="context"),
+                "ctx_percent": ContextConfig(
+                    type="context", color="yellow", format="test", theme="nerd"
+                ),
             }
         )
         assert config.get_module_type("ctx_percent") == "context"
@@ -142,10 +181,12 @@ class TestLoadConfig:
         assert config.color is True
         # Check that defaults.toml was loaded
         assert "model" in config.modules
-        theme_vars = config.get_theme_vars("model")
-        # Nerd theme label includes the icon
-        assert "label" in theme_vars
-        assert "format" in theme_vars
+        model_config = config.get_module_config("model")
+        assert model_config is not None
+        assert isinstance(model_config, ModelConfig)
+        # Theme-resolved values are on the config directly
+        assert model_config.format != ""
+        assert model_config.label != ""  # Nerd theme has icon label
 
     def test_user_config_overrides_defaults(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:

@@ -2,6 +2,15 @@
 
 from rich.console import Console, ConsoleOptions, RenderableType
 from rich.table import Table
+from statusline.config import (
+    BarTheme,
+    ContextBarConfig,
+    ContextConfig,
+    CostConfig,
+    ModelConfig,
+    VersionConfig,
+    WorkspaceConfig,
+)
 from statusline.input import (
     ContextWindowInfo,
     CostInfo,
@@ -18,27 +27,40 @@ class TestModelModule:
         module = get_module("model")
         assert module is not None
         inputs = {"model": ModelInfo(id="test-model", display_name="Test Model")}
-        result = module.render(inputs, {"format": "{{ model.display_name }}"})
+        config = ModelConfig(
+            type="model",
+            color="cyan",
+            format="{{ model.display_name }}",
+            theme="nerd",
+        )
+        result = module.render(inputs, config)
         assert result == "Test Model"
 
     def test_render_empty_display_name(self):
         module = get_module("model")
         assert module is not None
         inputs = {"model": ModelInfo(id="x", display_name="")}
-        result = module.render(inputs, {"format": "{{ model.display_name }}"})
+        config = ModelConfig(
+            type="model",
+            color="cyan",
+            format="{{ model.display_name }}",
+            theme="nerd",
+        )
+        result = module.render(inputs, config)
         assert result == ""
 
     def test_render_with_label(self):
         module = get_module("model")
         assert module is not None
         inputs = {"model": ModelInfo(id="test-model", display_name="Test Model")}
-        result = module.render(
-            inputs,
-            {
-                "format": "[cyan]{{ theme.label }}{{ model.display_name }}[/cyan]",
-                "label": "\uee0d ",
-            },
+        config = ModelConfig(
+            type="model",
+            color="cyan",
+            format="[cyan]{{ theme.label }}{{ model.display_name }}[/cyan]",
+            label="\uee0d ",
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert "\uee0d" in result
         assert "Test Model" in result
 
@@ -52,32 +74,43 @@ class TestWorkspaceModule:
                 current_dir="/home/user/my-project", project_dir="/home/user/my-project"
             )
         }
-        result = module.render(
-            inputs, {"format": "{{ workspace.current_dir | basename }}"}
+        config = WorkspaceConfig(
+            type="workspace",
+            color="blue",
+            format="{{ workspace.current_dir | basename }}",
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert result == "my-project"
 
     def test_render_empty_workspace_falls_back_to_cwd(self):
         module = get_module("workspace")
         assert module is not None
-        # Provider handles the fallback, so we test with the fallback already applied
         inputs = {
             "workspace": WorkspaceInfo(
                 current_dir="/fallback/path", project_dir="/fallback/path"
             )
         }
-        result = module.render(
-            inputs, {"format": "{{ workspace.current_dir | basename }}"}
+        config = WorkspaceConfig(
+            type="workspace",
+            color="blue",
+            format="{{ workspace.current_dir | basename }}",
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert result == "path"
 
     def test_render_empty_both_returns_tilde(self):
         module = get_module("workspace")
         assert module is not None
         inputs = {"workspace": WorkspaceInfo(current_dir="", project_dir="")}
-        result = module.render(
-            inputs, {"format": "{{ workspace.current_dir | basename }}"}
+        config = WorkspaceConfig(
+            type="workspace",
+            color="blue",
+            format="{{ workspace.current_dir | basename }}",
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert result == "~"
 
 
@@ -86,27 +119,39 @@ class TestCostModule:
         module = get_module("cost")
         assert module is not None
         inputs = {"cost": CostInfo(total_cost_usd=0.05)}
-        result = module.render(
-            inputs, {"format": "{{ cost.total_cost_usd | format_cost }}"}
+        config = CostConfig(
+            type="cost",
+            color="green",
+            format="{{ cost.total_cost_usd | format_cost }}",
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert result == "$0.05"
 
     def test_render_cost_dollars(self):
         module = get_module("cost")
         assert module is not None
         inputs = {"cost": CostInfo(total_cost_usd=1.23)}
-        result = module.render(
-            inputs, {"format": "{{ cost.total_cost_usd | format_cost }}"}
+        config = CostConfig(
+            type="cost",
+            color="green",
+            format="{{ cost.total_cost_usd | format_cost }}",
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert result == "$1.23"
 
     def test_render_cost_small(self):
         module = get_module("cost")
         assert module is not None
         inputs = {"cost": CostInfo(total_cost_usd=0.0012)}
-        result = module.render(
-            inputs, {"format": "{{ cost.total_cost_usd | format_cost }}"}
+        config = CostConfig(
+            type="cost",
+            color="green",
+            format="{{ cost.total_cost_usd | format_cost }}",
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert result == "$0.0012"
 
 
@@ -115,18 +160,26 @@ class TestContextModule:
         module = get_module("context")
         assert module is not None
         inputs = {"context": ContextWindowInfo(used_percentage=42.5)}
-        result = module.render(
-            inputs, {"format": "{{ context.used_percentage | format_percent }}"}
+        config = ContextConfig(
+            type="context",
+            color="yellow",
+            format="{{ context.used_percentage | format_percent }}",
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert result == " 42%"
 
     def test_render_zero_percentage(self):
         module = get_module("context")
         assert module is not None
         inputs = {"context": ContextWindowInfo(used_percentage=0.0)}
-        result = module.render(
-            inputs, {"format": "{{ context.used_percentage | format_percent }}"}
+        config = ContextConfig(
+            type="context",
+            color="yellow",
+            format="{{ context.used_percentage | format_percent }}",
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert result == "  0%"
 
 
@@ -135,15 +188,26 @@ class TestVersionModule:
         module = get_module("version")
         assert module is not None
         inputs = {"version": VersionInfo(version="2.0.76")}
-        result = module.render(inputs, {"format": "v{{ version.version }}"})
+        config = VersionConfig(
+            type="version",
+            color="dim",
+            format="v{{ version.version }}",
+            theme="nerd",
+        )
+        result = module.render(inputs, config)
         assert result == "v2.0.76"
 
     def test_render_empty_version(self):
         module = get_module("version")
         assert module is not None
-        # Provider handles the fallback to "?"
         inputs = {"version": VersionInfo(version="?")}
-        result = module.render(inputs, {"format": "v{{ version.version }}"})
+        config = VersionConfig(
+            type="version",
+            color="dim",
+            format="v{{ version.version }}",
+            theme="nerd",
+        )
+        result = module.render(inputs, config)
         assert result == "v?"
 
 
@@ -153,21 +217,44 @@ class TestBuildContext:
         assert module is not None
         model_info = ModelInfo(id="test-model", display_name="Test Model")
         inputs = {"model": model_info}
-        theme_vars = {"format": "{{ model.display_name }}", "label": "M: "}
-        fmt, context = module.build_context(inputs, theme_vars)
+        config = ModelConfig(
+            type="model",
+            color="cyan",
+            format="{{ model.display_name }}",
+            label="M: ",
+            theme="nerd",
+        )
+        fmt, context = module.build_context(inputs, config)
         assert fmt == "{{ model.display_name }}"
         assert context["model"] is model_info
-        assert context["theme"] is theme_vars
+        assert context["theme"] is config
 
     def test_build_context_empty_format_raises(self):
         module = get_module("model")
         assert module is not None
         inputs = {"model": ModelInfo()}
+        # ModelConfig requires format, so create one with empty string
+        config = ModelConfig(
+            type="model", color="cyan", format="", theme="nerd"
+        )
         try:
-            module.build_context(inputs, {})
+            module.build_context(inputs, config)
             assert False, "Expected ValueError"
         except ValueError as e:
             assert "no format template" in str(e)
+
+
+def _make_bar_theme(**overrides) -> BarTheme:
+    """Create a BarTheme with defaults for testing."""
+    defaults = {
+        "left": "",
+        "right": "",
+        "full": "█",
+        "empty": " ",
+        "width": 10,
+    }
+    defaults.update(overrides)
+    return BarTheme(**defaults)
 
 
 class TestContextBarModule:
@@ -176,12 +263,13 @@ class TestContextBarModule:
         module = get_module("context_bar")
         assert module is not None
         inputs = {"context": ContextWindowInfo(used_percentage=42.5)}
-        result = module.render(
-            inputs,
-            {
-                "format": "{{ progress_bar(**theme.bar) }} {{ context.used_percentage | format_percent }}"
-            },
+        config = ContextBarConfig(
+            type="context_bar",
+            format="{{ progress_bar(**theme.bar) }} {{ context.used_percentage | format_percent }}",
+            bar=_make_bar_theme(),
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert isinstance(result, Table)
 
     def test_render_without_progress_bar_returns_string(self):
@@ -189,10 +277,13 @@ class TestContextBarModule:
         module = get_module("context_bar")
         assert module is not None
         inputs = {"context": ContextWindowInfo(used_percentage=42.5)}
-        result = module.render(
-            inputs,
-            {"format": "{{ context.used_percentage | format_percent }}"},
+        config = ContextBarConfig(
+            type="context_bar",
+            format="{{ context.used_percentage | format_percent }}",
+            bar=_make_bar_theme(),
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert isinstance(result, str)
         assert result == " 42%"
 
@@ -201,16 +292,25 @@ class TestContextBarModule:
         module = get_module("context_bar")
         assert module is not None
         inputs = {"context": ContextWindowInfo(used_percentage=50.0)}
-        result = module.render(
-            inputs,
-            {"format": "{{ progress_bar(full='#', empty='.', left='[', right=']') }}"},
+        config = ContextBarConfig(
+            type="context_bar",
+            format="{{ progress_bar(full='#', empty='.', left='[', right=']') }}",
+            bar=_make_bar_theme(),
+            theme="nerd",
         )
+        result = module.render(inputs, config)
         assert isinstance(result, Table)
 
     def test_render_no_context_returns_empty(self):
         module = get_module("context_bar")
         assert module is not None
-        result = module.render({}, {"format": "{{ progress_bar() }}"})
+        config = ContextBarConfig(
+            type="context_bar",
+            format="{{ progress_bar() }}",
+            bar=_make_bar_theme(),
+            theme="nerd",
+        )
+        result = module.render({}, config)
         assert result == ""
 
 

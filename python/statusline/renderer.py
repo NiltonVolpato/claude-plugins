@@ -31,9 +31,13 @@ def render_items(
             )
         inputs = resolver.resolve_for_module(module.__inputs__)
         module_config = config.get_module_config(alias)
-        theme_vars = config.get_theme_vars(alias)
+        if module_config is None:
+            report_error(
+                f"no config for module '{alias}'",
+                ValueError(f"module '{alias}' not found in config"),
+            )
         try:
-            rendered = module.render(inputs, theme_vars, expand=module_config.expand)
+            rendered = module.render(inputs, module_config, expand=module_config.expand)
         except Exception as exc:
             report_error(f"rendering module '{alias}'", exc)
         if rendered:

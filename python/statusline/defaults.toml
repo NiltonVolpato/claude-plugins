@@ -7,7 +7,9 @@ enabled = ["model", "workspace", "context"]
 separator = " | "
 
 [modules.model]
+type = "model"
 color = "cyan"
+label = ""
 format = "[cyan]{{ theme.label }}{{ model.display_name }}[/cyan]"
 themes.nerd.label = "\uee0d  "
 themes.ascii.label = "Model: "
@@ -15,7 +17,9 @@ themes.emoji.label = "🤖 "
 themes.minimal.format = "[cyan]{{ model.display_name }}[/cyan]"
 
 [modules.workspace]
+type = "workspace"
 color = "blue"
+label = ""
 format = "[blue]{{ theme.label }}{{ workspace.current_dir | basename }}[/blue]"
 themes.nerd.label = "\uf07c  "
 themes.ascii.label = "Directory: "
@@ -23,7 +27,9 @@ themes.emoji.label = "📁 "
 themes.minimal.label = ""
 
 [modules.cost]
+type = "cost"
 color = "green"
+label = ""
 format = "[green]{{ theme.label }}{{ cost.total_cost_usd | format_cost }}[/green]"
 themes.nerd.label = "\uef8d  "
 themes.ascii.label = "Cost: "
@@ -31,7 +37,9 @@ themes.emoji.label = "💰 "
 themes.minimal.label = ""
 
 [modules.context]
+type = "context"
 color = "yellow"
+label = ""
 format = "[yellow]{{ theme.label }}{{ context.used_percentage | format_percent }}[/yellow]"
 themes.nerd.label = "\uede8  "
 themes.ascii.label = "Context: "
@@ -39,7 +47,15 @@ themes.emoji.label = "📊 "
 themes.minimal.label = ""
 
 [modules.context_bar]
+type = "context_bar"
 format = "{{ progress_bar(**theme.bar) }} {{ context.used_percentage | format_percent }}"
+
+[modules.context_bar.bar]
+left = ""
+right = ""
+full = "█"
+empty = " "
+width = 10
 
 [modules.context_bar.themes.nerd.bar]
 left = ""
@@ -68,7 +84,9 @@ full = "🟩"
 empty = "⬜"
 
 [modules.version]
+type = "version"
 color = "dim"
+label = ""
 format = "[dim]{{ theme.label }}v{{ version.version }}[/dim]"
 themes.nerd.label = "\uf487  "
 themes.ascii.label = "Version: "
@@ -76,7 +94,9 @@ themes.emoji.label = "📦 "
 themes.minimal.label = ""
 
 [modules.git]
+type = "git"
 color = "magenta"
+label = ""
 format = "[magenta]{{ theme.label }}{{ git.branch }}{{ git.dirty_indicator }}{{ git.ahead_behind }}[/magenta]"
 themes.nerd.label = "\uea68  "
 themes.ascii.label = "Git: "
@@ -84,6 +104,7 @@ themes.emoji.label = "🌿 "
 themes.minimal.label = ""
 
 [modules.events]
+type = "events"
 expand = true
 spacing = 2
 run_spacing = ""

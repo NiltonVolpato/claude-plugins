@@ -9,7 +9,12 @@ from rich.styled import Styled
 from rich.table import Table
 from rich.text import Text
 
-from statusline.config import ThemeVars
+from statusline.config import (
+    EventsBackgrounds,
+    EventsConfig,
+    EventsLineBars,
+    ModuleConfigUnion,
+)
 from statusline.input import EventsInfo, EventTuple, InputModel
 from statusline.modules import Module, register
 from statusline.renderables import TruncateLeft
@@ -244,16 +249,20 @@ class EventsModule(Module):
     def render(
         self,
         inputs: dict[str, InputModel],
-        theme_vars: ThemeVars,
-        *,
-        expand: bool = False,
+        config: ModuleConfigUnion,
+        **kwargs,
     ):
+        expand = kwargs.get("expand", False)
         events_info: EventsInfo | None = inputs.get("events")  # type: ignore[assignment]
         if not events_info or not events_info.events:
             return ""
 
-        # Apply limit from theme when not expanding
-        limit = int(theme_vars["limit"])
+        # Type narrow to EventsConfig
+        if not isinstance(config, EventsConfig):
+            return ""
+
+        # Apply limit from config when not expanding
+        limit = config.limit
         raw_events = events_info.events if expand else events_info.events[-limit:]
 
         # Group events into runs
@@ -261,26 +270,26 @@ class EventsModule(Module):
         if not runs:
             return ""
 
-        # Get icon mappings from theme
-        tool_icons = theme_vars["tool_icons"]
-        event_icons = theme_vars["event_icons"]
-        bash_icons = theme_vars["bash_icons"]
-        line_bars = theme_vars["line_bars"]
+        # Get icon mappings from config
+        tool_icons = config.tool_icons
+        event_icons = config.event_icons
+        bash_icons = config.bash_icons
+        line_bars = config.line_bars
 
         # Spacing between events within a run
-        spacing = int(theme_vars["spacing"])
+        spacing = config.spacing
 
         # Background styles
-        backgrounds = theme_vars["backgrounds"]
+        backgrounds = config.backgrounds
         context_bg: dict[RunContext, str] = {
-            "main": backgrounds["main"],
-            "user": backgrounds["user"],
-            "subagent": backgrounds["subagent"],
+            "main": backgrounds.main,
+            "user": backgrounds.user,
+            "subagent": backgrounds.subagent,
         }
 
         # Bracket mode: show brackets around each run
-        bracket_mode = theme_vars["brackets"]
-        brackets_config = theme_vars["run_brackets"]
+        bracket_mode = config.brackets
+        brackets_config = config.run_brackets
 
         # Compute boundary spacing (symmetric padding at run edges)
         boundary_spacing = spacing + (spacing % 2)  # Round up to even
@@ -290,7 +299,7 @@ class EventsModule(Module):
         run_renderables = []
         for run in runs:
             bg = context_bg.get(run.context, "")
-            brackets = brackets_config.get(run.context, ["", ""])
+            brackets = getattr(brackets_config, run.context, ("", ""))
             open_bracket, close_bracket = brackets if bracket_mode else ("", "")
 
             # Convert events to icons (filtering None)
@@ -355,9 +364,9 @@ class EventsModule(Module):
         runs_grid.add_row(*run_renderables)
 
         # Outer frame brackets
-        left = Text.from_markup(str(theme_vars["left"]))
-        right = Text.from_markup(str(theme_vars["right"]))
-        background = str(theme_vars.get("background", ""))
+        left = Text.from_markup(config.left)
+        right = Text.from_markup(config.right)
+        background = config.background
 
         # Build events renderable with left-truncation
         events = TruncateLeft(runs_grid, expand=expand)
@@ -377,11 +386,11 @@ class EventsModule(Module):
         event: str,
         tool: str | None,
         extra: str | None,
-        tool_icons: dict,
-        event_icons: dict,
-        bash_icons: dict,
-        backgrounds: dict,
-        line_bars: dict,
+        tool_icons: dict[str, str],
+        event_icons: dict[str, str],
+        bash_icons: dict[str, str],
+        backgrounds: EventsBackgrounds,
+        line_bars: EventsLineBars,
         segment_bg: str | None = None,
     ) -> Text | None:
         """Convert an event to its styled Text representation.
@@ -423,8 +432,8 @@ class EventsModule(Module):
                     parts = extra[1:].split("-")
                     added = int(parts[0]) if parts[0] else 0
                     removed = int(parts[1]) if len(parts) > 1 and parts[1] else 0
-                    chars = line_bars["chars"]
-                    thresholds = line_bars["thresholds"]
+                    chars = line_bars.chars
+                    thresholds = line_bars.thresholds
                     add_bar = _lines_to_bar(added, chars, thresholds)
                     rem_bar = _lines_to_bar(removed, chars, thresholds)
                     # Always show 2 bar positions (additions + deletions)
@@ -432,7 +441,7 @@ class EventsModule(Module):
                     text = Text.from_markup(base_icon)
                     if segment_bg:
                         text.stylize(segment_bg)
-                    bar_bg = backgrounds["edit_bar"]
+                    bar_bg = backgrounds.edit_bar
                     text.append(add_bar, style=f"green on {bar_bg}")
                     text.append(rem_bar, style=f"red on {bar_bg}")
                     return text

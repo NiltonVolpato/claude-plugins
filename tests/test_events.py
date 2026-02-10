@@ -2,6 +2,12 @@
 
 from rich.console import Console
 from rich.text import Text
+from statusline.config import (
+    EventsBackgrounds,
+    EventsConfig,
+    EventsLineBars,
+    EventsRunBrackets,
+)
 from statusline.input import EventsInfo, EventTuple, StatuslineInput
 from statusline.modules import get_module
 from statusline.modules.events import _lines_to_bar
@@ -31,8 +37,6 @@ ASCII_TOOL_ICONS = {
 }
 
 ASCII_EVENT_ICONS = {
-    "PostToolUse": None,
-    "PostToolUseFailure": None,
     "SubagentStart": ">",
     "SubagentStop": "<",
     "UserPromptSubmit": "U",
@@ -183,32 +187,41 @@ class TestTruncateLeftRendering:
         assert "#aa0000" in str(crop_seg.style).lower()
 
 
-# Default theme vars for testing (all required fields)
-DEFAULT_TEST_THEME_VARS = {
-    "tool_icons": ASCII_TOOL_ICONS,
-    "event_icons": ASCII_EVENT_ICONS,
-    "bash_icons": ASCII_BASH_ICONS,
-    "spacing": 0,
-    "limit": 30,
-    "left": "|",
-    "right": "|",
-    "brackets": True,
-    "backgrounds": {
-        "main": "on #2a3a2a",
-        "user": "on #3a2a2a",
-        "subagent": "on #2a2a3a",
-        "edit_bar": "#4c4d4e",
-    },
-    "run_brackets": {
-        "main": ["[", "]"],
-        "user": ["{", "}"],
-        "subagent": ["<", ">"],
-    },
-    "line_bars": {
-        "chars": LINE_BARS_CHARS,
-        "thresholds": LINE_BARS_THRESHOLDS,
-    },
-}
+# Default test config for events module
+def make_test_events_config(**overrides) -> EventsConfig:
+    """Create an EventsConfig for testing with ASCII icons."""
+    defaults = {
+        "type": "events",
+        "theme": "nerd",
+        "tool_icons": ASCII_TOOL_ICONS,
+        "event_icons": ASCII_EVENT_ICONS,
+        "bash_icons": ASCII_BASH_ICONS,
+        "spacing": 0,
+        "limit": 30,
+        "left": "|",
+        "right": "|",
+        "brackets": True,
+        "backgrounds": EventsBackgrounds(
+            main="on #2a3a2a",
+            user="on #3a2a2a",
+            subagent="on #2a2a3a",
+            edit_bar="#4c4d4e",
+        ),
+        "run_brackets": EventsRunBrackets(
+            main=("[", "]"),
+            user=("{", "}"),
+            subagent=("<", ">"),
+        ),
+        "line_bars": EventsLineBars(
+            chars=LINE_BARS_CHARS,
+            thresholds=LINE_BARS_THRESHOLDS,
+        ),
+    }
+    # Apply overrides
+    for key, value in overrides.items():
+        defaults[key] = value
+    return EventsConfig(**defaults)
+
 
 # Named configs to test with _render_events
 TEST_CONFIGS = {
@@ -221,18 +234,18 @@ class TestEventsModuleWithAsciiIcons:
     """Tests for EventsModule using ASCII icons for predictable output."""
 
     def _render_events(
-        self, events: list[EventTuple], width: int = 30, **theme_vars
+        self, events: list[EventTuple], width: int = 30, **config_overrides
     ) -> dict[str, str]:
         """Render events with multiple configs, return dict of results."""
         module = get_module("events")
         assert module is not None
-        base_theme = {**DEFAULT_TEST_THEME_VARS, **theme_vars}
         inputs = {"events": EventsInfo(events=events)}
 
         results = {}
-        for name, config in TEST_CONFIGS.items():
-            theme = {**base_theme, **config}
-            result = module.render(inputs, theme)
+        for name, extra_overrides in TEST_CONFIGS.items():
+            merged_overrides = {**config_overrides, **extra_overrides}
+            config = make_test_events_config(**merged_overrides)
+            result = module.render(inputs, config)
             results[name] = render_plain(result, width=width) if result else ""
         return results
 
@@ -412,8 +425,16 @@ class TestEventToIcon:
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
-        backgrounds = {"edit_bar": "#4c4d4e"}
-        line_bars = {"chars": LINE_BARS_CHARS, "thresholds": LINE_BARS_THRESHOLDS}
+        backgrounds = EventsBackgrounds(
+            main="on #2a3a2a",
+            user="on #3a2a2a",
+            subagent="on #2a2a3a",
+            edit_bar="#4c4d4e",
+        )
+        line_bars = EventsLineBars(
+            chars=LINE_BARS_CHARS,
+            thresholds=LINE_BARS_THRESHOLDS,
+        )
         text = module._event_to_icon(
             event,
             tool,
@@ -466,8 +487,16 @@ class TestEditWithLineCounts:
             ASCII_TOOL_ICONS,
             ASCII_EVENT_ICONS,
             ASCII_BASH_ICONS,
-            {"edit_bar": "#4c4d4e"},
-            {"chars": LINE_BARS_CHARS, "thresholds": LINE_BARS_THRESHOLDS},
+            EventsBackgrounds(
+                main="on #2a3a2a",
+                user="on #3a2a2a",
+                subagent="on #2a2a3a",
+                edit_bar="#4c4d4e",
+            ),
+            EventsLineBars(
+                chars=LINE_BARS_CHARS,
+                thresholds=LINE_BARS_THRESHOLDS,
+            ),
         )
 
     def test_edit_with_additions_only(self):
@@ -560,17 +589,18 @@ class TestEditWithLineCounts:
         module = get_module("events")
         assert module is not None
 
-        # Render with a segment background (using full theme_vars)
-        theme = {**DEFAULT_TEST_THEME_VARS}
-        theme["backgrounds"] = {
-            "main": "on #2a3a2a",
-            "user": "on #3a2a2a",
-            "subagent": "on #2a2a3a",
-            "edit_bar": "#abcdef",
-        }
+        # Render with a custom edit_bar background
+        config = make_test_events_config(
+            backgrounds=EventsBackgrounds(
+                main="on #2a3a2a",
+                user="on #3a2a2a",
+                subagent="on #2a2a3a",
+                edit_bar="#abcdef",
+            )
+        )
         result = module.render(
             {"events": EventsInfo(events=events)},
-            theme,
+            config,
         )
 
         # Get the segments and check bar backgrounds
@@ -650,11 +680,13 @@ class TestToolIconsComplete:
     """Verify all expected icons are defined in defaults.toml."""
 
     def test_all_tools_have_icons(self):
-        from statusline.config import load_config
+        from statusline.config import EventsConfig, load_config
 
         config = load_config()
-        theme_vars = config.get_theme_vars("events")
-        tool_icons = theme_vars.get("tool_icons", {})
+        events_config = config.get_module_config("events")
+        assert events_config is not None
+        assert isinstance(events_config, EventsConfig)
+        tool_icons = events_config.tool_icons
         expected = [
             "Bash",
             "Edit",
@@ -670,11 +702,13 @@ class TestToolIconsComplete:
             assert tool in tool_icons, f"Missing tool icon: {tool}"
 
     def test_all_events_have_icons(self):
-        from statusline.config import load_config
+        from statusline.config import EventsConfig, load_config
 
         config = load_config()
-        theme_vars = config.get_theme_vars("events")
-        event_icons = theme_vars.get("event_icons", {})
+        events_config = config.get_module_config("events")
+        assert events_config is not None
+        assert isinstance(events_config, EventsConfig)
+        event_icons = events_config.event_icons
         # Note: PostToolUse and PostToolUseFailure intentionally don't have icons
         # (they use tool_icons instead)
         expected = [
@@ -688,11 +722,13 @@ class TestToolIconsComplete:
             assert event in event_icons, f"Missing event icon: {event}"
 
     def test_common_bash_commands_have_icons(self):
-        from statusline.config import load_config
+        from statusline.config import EventsConfig, load_config
 
         config = load_config()
-        theme_vars = config.get_theme_vars("events")
-        bash_icons = theme_vars.get("bash_icons", {})
+        events_config = config.get_module_config("events")
+        assert events_config is not None
+        assert isinstance(events_config, EventsConfig)
+        bash_icons = events_config.bash_icons
         expected = ["git", "cargo", "uv", "python", "pytest", "npm", "docker"]
         for cmd in expected:
             assert cmd in bash_icons, f"Missing bash icon: {cmd}"
@@ -708,21 +744,20 @@ class TestSpacingAfterTurnEnd:
     def _render_events_plain(self, events: list[EventTuple], spacing: int = 1) -> str:
         """Render events and return plain text (no ANSI codes)."""
         import re
+        from io import StringIO
+
+        from rich.console import Console
 
         from statusline.input import EventsInfo
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
-        theme_vars = {**DEFAULT_TEST_THEME_VARS, "spacing": spacing}
+        config = make_test_events_config(spacing=spacing)
         result = module.render(
             {"events": EventsInfo(events=events)},
-            theme_vars,
+            config,
         )
         # Convert Rich renderable to text
-        from io import StringIO
-
-        from rich.console import Console
-
         console = Console(file=StringIO(), force_terminal=True, width=200)
         console.print(result, end="")
         raw = console.file.getvalue()
@@ -771,17 +806,16 @@ class TestStopUndoneDetection:
     def _render_events_plain(self, events: list[EventTuple]) -> str:
         """Render events and return plain text (no ANSI codes)."""
         import re
+        from io import StringIO
+
+        from rich.console import Console
 
         from statusline.input import EventsInfo
         from statusline.modules.events import EventsModule
 
         module = EventsModule()
-        # Use full theme_vars with ASCII icons for predictable output
-        theme_vars = {**DEFAULT_TEST_THEME_VARS, "spacing": 0}
-        result = module.render({"events": EventsInfo(events=events)}, theme_vars)
-        from io import StringIO
-
-        from rich.console import Console
+        config = make_test_events_config(spacing=0)
+        result = module.render({"events": EventsInfo(events=events)}, config)
 
         console = Console(file=StringIO(), force_terminal=True, width=200)
         console.print(result, end="")

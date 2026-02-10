@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from rich.console import RenderableType
 
-from statusline.config import ThemeVars
+from statusline.config import ModuleConfigUnion
 from statusline.input import InputModel
 from statusline.templates import render_template
 
@@ -19,40 +19,40 @@ class Module:
     def render(
         self,
         inputs: dict[str, InputModel],
-        theme_vars: ThemeVars,
+        config: ModuleConfigUnion,
         **kwargs,
     ) -> RenderableType:
         """Render the module output with Rich markup.
 
         Args:
             inputs: Dict mapping input names to their model instances.
-            theme_vars: Theme variables including 'format' and 'label'.
+            config: Module configuration with theme already applied.
             **kwargs: Extra options (e.g. expand) passed by the renderer.
 
         Returns:
             Rich renderable (string with markup, Table, etc.).
         """
-        fmt, context = self.build_context(inputs, theme_vars)
+        fmt, context = self.build_context(inputs, config)
         return render_template(fmt, context)
 
     def build_context(
-        self, inputs: dict[str, InputModel], theme_vars: ThemeVars
+        self, inputs: dict[str, InputModel], config: ModuleConfigUnion
     ) -> tuple[str, dict]:
         """Build namespaced template context.
 
         Returns (format_string, context_dict).
         Inputs namespaced under their model's `name` ClassVar.
-        Theme vars under 'theme'. No model_dump() — Jinja2 uses attribute access.
+        Config available under 'theme' for template compatibility.
 
         Raises:
             ValueError: If no format template is configured.
         """
-        fmt = theme_vars.get("format", "")
+        fmt = getattr(config, "format", "")
         if not fmt:
             raise ValueError(f"module '{self.name}' has no format template")
-        assert isinstance(fmt, str)
         ctx: dict = {key: input for key, input in inputs.items()}
-        ctx["theme"] = theme_vars
+        # Templates access config via 'theme' (e.g., {{ theme.label }})
+        ctx["theme"] = config
         return fmt, ctx
 
 
