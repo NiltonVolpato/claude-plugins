@@ -231,9 +231,6 @@ def install(
             "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline --no-fail render",
         }
 
-    # Ensure directory exists
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-
     # Write settings
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
     typer.echo(f"Statusline render configured in {settings_path}")
@@ -394,7 +391,6 @@ def config(
                 FileExistsError(str(CONFIG_PATH)),
             )
 
-        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         CONFIG_PATH.write_text(generate_default_config_toml())
         typer.echo(f"Created config file at {CONFIG_PATH}")
         return

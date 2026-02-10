@@ -43,8 +43,8 @@ def log_event(data: dict) -> None:
     Uses BEGIN IMMEDIATE to prevent concurrent write conflicts.
     Fails silently to avoid disrupting Claude Code.
     """
-    cwd = data.get("cwd")
-    if not cwd:
+    transcript_path = data.get("transcript_path")
+    if not transcript_path:
         return
 
     session_id = data.get("session_id", "")
@@ -55,8 +55,7 @@ def log_event(data: dict) -> None:
         if event_name:
             data["hook_event_name"] = event_name
 
-    db_path = get_db_path(cwd)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path = get_db_path(transcript_path)
 
     try:
         with sqlite3.connect(db_path, timeout=5.0) as conn:

@@ -158,19 +158,19 @@ class EventsInfoProvider(InputProvider):
             return input.events
 
         # Otherwise query from database
-        if not input.session_id or not input.cwd:
+        if not input.session_id or not input.transcript_path:
             return EventsInfo()
 
-        db_path = self._get_db_path(input.cwd)
+        db_path = self._get_db_path(input.transcript_path)
         if not db_path.exists():
             return EventsInfo()
 
         events = self._query_events(db_path, input.session_id, limit=250)
         return EventsInfo(events=events)
 
-    def _get_db_path(self, cwd: str) -> Path:
+    def _get_db_path(self, transcript_path: str) -> Path:
         """Get the SQLite database path for this project."""
-        return get_db_path(cwd)
+        return get_db_path(transcript_path)
 
     def _query_events(
         self, db_path: Path, session_id: str, limit: int

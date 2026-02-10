@@ -5,14 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def get_db_path(cwd: str) -> Path:
+def get_db_path(transcript_path: str) -> Path:
     """Get the SQLite database path for a project.
 
-    Path format: ~/.claude/projects/{project-slug}/statusline-events.db
-    where project-slug is cwd with '/' replaced by '-'.
-
-    NOTE: This must match the path used by the original shell hook
-    for backward compatibility with existing databases.
+    The transcript_path from Claude Code is already in the correct project
+    directory (e.g., ~/.claude/projects/{project-slug}/session.jsonl).
+    We use its parent directory to store our database.
     """
-    project_slug = cwd.replace("/", "-")
-    return Path.home() / ".claude" / "projects" / project_slug / "statusline-events.db"
+    return Path(transcript_path).parent / "statusline-events.db"

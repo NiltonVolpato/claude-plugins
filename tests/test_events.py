@@ -665,7 +665,8 @@ class TestEventsInfoProvider:
 
     def test_db_path_format(self):
         provider = EventsInfoProvider()
-        path = provider._get_db_path("/home/user/project")
+        transcript_path = "/home/user/.claude/projects/-home-user-project/session.jsonl"
+        path = provider._get_db_path(transcript_path)
         assert str(path).endswith("statusline-events.db")
         assert "-home-user-project" in str(path)
 

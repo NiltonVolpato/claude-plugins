@@ -21,8 +21,9 @@ class TestLogEvent:
     def test_stores_full_json(self):
         """Event data is stored as JSON in events_v2."""
         with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_path = f"{tmpdir}/session.jsonl"
             data = {
-                "cwd": tmpdir,
+                "transcript_path": transcript_path,
                 "session_id": "test",
                 "hook_event_name": "PostToolUse",
                 "tool_name": "Bash",
@@ -30,7 +31,7 @@ class TestLogEvent:
             }
             log_event(data)
 
-            db_path = get_db_path(tmpdir)
+            db_path = get_db_path(transcript_path)
             conn = sqlite3.connect(db_path)
             row = conn.execute(
                 "SELECT data FROM events_v2 WHERE session_id = 'test'"
@@ -44,15 +45,16 @@ class TestLogEvent:
     def test_sql_injection_single_quote(self):
         """Single quote SQL injection attempt is safely stored."""
         with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_path = f"{tmpdir}/session.jsonl"
             evil_session = "test'; DROP TABLE events_v2; --"
             data = {
-                "cwd": tmpdir,
+                "transcript_path": transcript_path,
                 "session_id": evil_session,
                 "hook_event_name": "PostToolUse",
             }
             log_event(data)
 
-            db_path = get_db_path(tmpdir)
+            db_path = get_db_path(transcript_path)
             conn = sqlite3.connect(db_path)
             # Table should still exist and data preserved
             row = conn.execute(
@@ -64,15 +66,16 @@ class TestLogEvent:
     def test_sql_injection_double_quote(self):
         """Double quote SQL injection attempt is safely stored."""
         with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_path = f"{tmpdir}/session.jsonl"
             evil_session = 'test"; DROP TABLE events_v2; --'
             data = {
-                "cwd": tmpdir,
+                "transcript_path": transcript_path,
                 "session_id": evil_session,
                 "hook_event_name": "PostToolUse",
             }
             log_event(data)
 
-            db_path = get_db_path(tmpdir)
+            db_path = get_db_path(transcript_path)
             conn = sqlite3.connect(db_path)
             # Table should still exist and data preserved
             row = conn.execute(
@@ -81,8 +84,8 @@ class TestLogEvent:
             assert row[0] == evil_session
             conn.close()
 
-    def test_missing_cwd_is_ignored(self):
-        """Events without cwd are silently ignored."""
+    def test_missing_transcript_path_is_ignored(self):
+        """Events without transcript_path are silently ignored."""
         data = {
             "session_id": "test",
             "hook_event_name": "PostToolUse",
@@ -93,14 +96,15 @@ class TestLogEvent:
     def test_injects_event_name_from_env(self, monkeypatch):
         """Event name is injected from CLAUDE_HOOK_EVENT_NAME env var."""
         with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_path = f"{tmpdir}/session.jsonl"
             monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "Stop")
             data = {
-                "cwd": tmpdir,
+                "transcript_path": transcript_path,
                 "session_id": "test",
             }
             log_event(data)
 
-            db_path = get_db_path(tmpdir)
+            db_path = get_db_path(transcript_path)
             conn = sqlite3.connect(db_path)
             row = conn.execute(
                 "SELECT data->>'hook_event_name' FROM events_v2"
@@ -158,14 +162,15 @@ class TestComputeExtra:
 def test_all_event_types(event_name):
     """All hook event types are logged and queryable."""
     with tempfile.TemporaryDirectory() as tmpdir:
+        transcript_path = f"{tmpdir}/session.jsonl"
         data = {
-            "cwd": tmpdir,
+            "transcript_path": transcript_path,
             "session_id": "test",
             "hook_event_name": event_name,
         }
         log_event(data)
 
-        db_path = get_db_path(tmpdir)
+        db_path = get_db_path(transcript_path)
         conn = sqlite3.connect(db_path)
         row = conn.execute(
             "SELECT data->>'hook_event_name' FROM events_v2"
@@ -177,9 +182,10 @@ def test_all_event_types(event_name):
 def test_end_to_end_cli():
     """Simulate a hook event via CLI and verify database state."""
     with tempfile.TemporaryDirectory() as tmpdir:
+        transcript_path = f"{tmpdir}/session.jsonl"
         input_json = json.dumps(
             {
-                "cwd": tmpdir,
+                "transcript_path": transcript_path,
                 "session_id": "test-session",
                 "hook_event_name": "PostToolUse",
                 "tool_name": "Bash",
@@ -197,7 +203,7 @@ def test_end_to_end_cli():
         assert result.returncode == 0
 
         # Verify JSON storage
-        db_path = get_db_path(tmpdir)
+        db_path = get_db_path(transcript_path)
         conn = sqlite3.connect(db_path)
         row = conn.execute(
             "SELECT data->>'tool_name', data->'tool_input'->>'command' FROM events_v2"
