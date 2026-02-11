@@ -407,56 +407,6 @@ class TestBashEventEdgeCases:
         assert "G" in output
 
 
-class TestApplyBackgroundEdgeCases:
-    """Edge cases for _apply_background styling."""
-
-    def test_no_segment_bg(self, style):
-        """When segment_bg is None, text should not be modified."""
-        style_no_bg = EventStyle(
-            tool_icons=style.tool_icons,
-            event_icons=style.event_icons,
-            bash_icons=style.bash_icons,
-            backgrounds=style.backgrounds,
-            line_bars=style.line_bars,
-            segment_bg=None,
-        )
-        data = EventData(event="Stop")
-        event = IconEvent(data, style_no_bg)
-        output = render_to_text(event)
-        assert "S" in output
-
-    def test_empty_segment_bg(self, style):
-        """Empty segment_bg string should apply empty style (no-op)."""
-        style_empty_bg = EventStyle(
-            tool_icons=style.tool_icons,
-            event_icons=style.event_icons,
-            bash_icons=style.bash_icons,
-            backgrounds=style.backgrounds,
-            line_bars=style.line_bars,
-            segment_bg="",
-        )
-        data = EventData(event="Stop")
-        event = IconEvent(data, style_empty_bg)
-        output = render_to_text(event)
-        assert "S" in output
-
-    def test_segment_bg_with_color(self, style):
-        """segment_bg with actual color should apply styling."""
-        style_with_bg = EventStyle(
-            tool_icons=style.tool_icons,
-            event_icons=style.event_icons,
-            bash_icons=style.bash_icons,
-            backgrounds=style.backgrounds,
-            line_bars=style.line_bars,
-            segment_bg="on red",
-        )
-        data = EventData(event="Stop")
-        event = IconEvent(data, style_with_bg)
-        # Should not crash and should render
-        output = render_to_text(event)
-        assert "S" in output
-
-
 class TestIconFallbacks:
     """Tests for icon fallback behavior when icons are missing."""
 

@@ -293,7 +293,6 @@ class EventsModule(Module):
                 bash_icons=config.bash_icons,
                 backgrounds=backgrounds,
                 line_bars=config.line_bars,
-                segment_bg=bg,
             )
 
             # Convert events to renderables

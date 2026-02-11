@@ -508,19 +508,11 @@ class TestEditWithLineCounts:
 
     def _render_edit(self, extra: str) -> Text:
         """Render an Edit event and return the Text."""
-        from rich.console import Console
-
         from statusline.modules.event_renderables import EditEvent, EventData
 
         data = EventData(event="PostToolUse", tool="Edit", extra=extra)
         renderable = EditEvent(data, self._get_style())
-        console = Console(force_terminal=True, width=80)
-        # Collect Text objects from the renderable
-        text = Text()
-        for segment in renderable.__rich_console__(console, console.options):
-            if isinstance(segment, Text):
-                text.append_text(segment)
-        return text
+        return renderable.__rich__()
 
     def test_edit_with_additions_only(self):
         """Edit with only additions shows green bar + placeholder space."""

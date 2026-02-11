@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from pydantic import BaseModel
-from rich.console import Console, ConsoleOptions, Measurement, RenderResult
 from rich.text import Text
 
 from statusline.config import EventsBackgrounds, EventsLineBars
@@ -28,14 +27,17 @@ class EventData(BaseModel):
 
 @dataclass
 class EventStyle:
-    """Styling options for event rendering."""
+    """Styling options for event rendering.
+
+    Note: Run-level backgrounds are applied in events.py via Styled(),
+    not here. This keeps event renderables pure and composable.
+    """
 
     tool_icons: dict[str, str]
     event_icons: dict[str, str]
     bash_icons: dict[str, str]
     backgrounds: EventsBackgrounds
     line_bars: EventsLineBars
-    segment_bg: str | None = None
 
 
 class EventBase(ABC):
@@ -46,41 +48,16 @@ class EventBase(ABC):
         self.style = style
 
     @abstractmethod
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
-        """Render this event."""
+    def __rich__(self) -> Text:
+        """Render this event as styled Text."""
         ...
-
-    def __rich_measure__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Measurement:
-        """Measure the width of this event."""
-        # Render to get actual width
-        text = Text()
-        for segment in self.__rich_console__(console, options):
-            if isinstance(segment, Text):
-                text.append_text(segment)
-        width = text.cell_len
-        return Measurement(width, width)
-
-    def _apply_background(self, text: Text) -> Text:
-        """Apply segment background if configured."""
-        if self.style.segment_bg:
-            text.stylize(self.style.segment_bg)
-        return text
 
 
 class IconEvent(EventBase):
     """Generic icon-based event rendering."""
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
-        icon = self._get_icon()
-        if icon:
-            text = Text.from_markup(icon)
-            yield self._apply_background(text)
+    def __rich__(self) -> Text:
+        return Text.from_markup(self._get_icon())
 
     def _get_icon(self) -> str:
         """Get the icon for this event."""
@@ -104,12 +81,9 @@ class IconEvent(EventBase):
 class BashEvent(EventBase):
     """Bash command event with command-specific icons."""
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
+    def __rich__(self) -> Text:
         icon = self._get_icon()
-        text = Text.from_markup(icon)
-        yield self._apply_background(text)
+        return Text.from_markup(icon)
 
     def _get_icon(self) -> str:
         """Get icon based on bash command."""
@@ -129,12 +103,9 @@ class BashEvent(EventBase):
 class EditEvent(EventBase):
     """Edit event with line change bars."""
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
+    def __rich__(self) -> Text:
         base_icon = self.style.tool_icons.get("Edit", "✏")
         text = Text.from_markup(base_icon)
-        self._apply_background(text)
 
         # Parse line counts from extra ("+N-M" format)
         added, removed = self._parse_line_counts()
@@ -147,7 +118,7 @@ class EditEvent(EventBase):
             text.append(add_bar, style=f"green on {bar_bg}")
             text.append(rem_bar, style=f"red on {bar_bg}")
 
-        yield text
+        return text
 
     def _parse_line_counts(self) -> tuple[int | None, int | None]:
         """Parse '+N-M' format from extra field."""
@@ -166,13 +137,9 @@ class EditEvent(EventBase):
 class InterruptEvent(EventBase):
     """Interrupt event (PostToolUseFailure with interrupt flag)."""
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
+    def __rich__(self) -> Text:
         icon = self.style.event_icons.get("Interrupt", "")
-        if icon:
-            text = Text.from_markup(icon)
-            yield self._apply_background(text)
+        return Text.from_markup(icon)
 
 
 def _lines_to_bar(count: int, chars: str, thresholds: list[int]) -> str:
