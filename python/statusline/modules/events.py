@@ -10,40 +10,34 @@ from rich.table import Table
 from rich.text import Text
 
 from statusline.config import (
-    EventsBackgrounds,
     EventsConfig,
     ModuleConfigUnion,
 )
 from statusline.input import EventsInfo, EventTuple, InputModel
 from statusline.modules import Module, register
-from statusline.modules.event_renderables import EventData, EventStyle, create_event
+from statusline.modules.event_renderables import (
+    EventData,
+    EventStyle,
+    Run,
+    RunData,
+    RunStyle,
+    create_event,
+)
 from statusline.renderables import TruncateLeft
 
-
-@dataclass
-class ProcessedEvent:
-    """An event with pre-computed rendering properties."""
-
-    event: str  # Original event name
-    tool: str | None
-    agent_id: str | None
-    extra: str | None
-    effective_event: str  # "StopUndone", "Interrupt", or same as event
-
-
-RunContext = Literal["main", "user", "subagent"]
+ProcessedRunContext = Literal["main", "user", "subagent"]
 
 
 @dataclass
-class Run:
+class ProcessedRun:
     """A contiguous sequence of events in the same context."""
 
-    context: RunContext
-    events: list[ProcessedEvent] = field(default_factory=list)
-    agent_id: str | None = None  # For subagent runs
+    context: ProcessedRunContext
+    events: list[EventData] = field(default_factory=list)
+    agent_id: str | None = None
 
 
-def group_into_runs(events: list[EventTuple]) -> list[Run]:
+def group_into_runs(events: list[EventTuple]) -> list[ProcessedRun]:
     """Group events into runs by context.
 
     A run is a contiguous sequence of events in the same context:
@@ -59,8 +53,8 @@ def group_into_runs(events: list[EventTuple]) -> list[Run]:
     if not events:
         return []
 
-    runs: list[Run] = []
-    current_run: Run | None = None
+    runs: list[ProcessedRun] = []
+    current_run: ProcessedRun | None = None
 
     # Track state for StopUndone detection and interrupt inference
     in_turn = events[0][0] not in ("UserPromptSubmit", None)
@@ -90,20 +84,14 @@ def group_into_runs(events: list[EventTuple]) -> list[Run]:
                 runs.append(current_run)
                 current_run = None
             # Add synthetic interrupt as a user run
-            interrupt_pe = ProcessedEvent(
-                event="Interrupt",
-                tool=None,
-                agent_id=None,
-                extra=None,
-                effective_event="Interrupt",
-            )
-            interrupt_run = Run(context="user", events=[interrupt_pe])
+            interrupt_event = EventData(event="Interrupt")
+            interrupt_run = ProcessedRun(context="user", events=[interrupt_event])
             runs.append(interrupt_run)
             in_turn = False
 
         # Determine context for this event
         if event == "UserPromptSubmit":
-            context: RunContext = "user"
+            context: ProcessedRunContext = "user"
         elif event == "Interrupt" or (
             event == "PostToolUseFailure" and extra == "interrupt"
         ):
@@ -112,8 +100,8 @@ def group_into_runs(events: list[EventTuple]) -> list[Run]:
             # Everything else is main (including subagent events)
             context = "main"
 
-        # Create ProcessedEvent
-        pe = ProcessedEvent(
+        # Create EventData
+        event_data = EventData(
             event=event,
             tool=tool,
             agent_id=agent_id,
@@ -131,12 +119,12 @@ def group_into_runs(events: list[EventTuple]) -> list[Run]:
         if start_new_run:
             if current_run is not None:
                 runs.append(current_run)
-            current_run = Run(
+            current_run = ProcessedRun(
                 context=context,
-                events=[pe],
+                events=[event_data],
             )
         else:
-            current_run.events.append(pe)
+            current_run.events.append(event_data)
 
         # Update state
         if event == "UserPromptSubmit":
@@ -151,82 +139,6 @@ def group_into_runs(events: list[EventTuple]) -> list[Run]:
         runs.append(current_run)
 
     return runs
-
-
-def preprocess_events(events: list[EventTuple]) -> list[ProcessedEvent]:
-    """Pre-process events to compute rendering properties.
-
-    Pass 1: Classification and state tracking.
-    - Detects StopUndone (Stop followed by tool use)
-    - Detects Interrupts (UserPromptSubmit while in turn)
-    """
-    if not events:
-        return []
-
-    result: list[ProcessedEvent] = []
-
-    # Initial state: if first event isn't UserPromptSubmit, we're mid-turn
-    first_event = events[0][0]
-    in_turn = first_event not in ("UserPromptSubmit", None)
-    subagent_depth = 0
-    prev_event = None
-
-    for i, (event, tool, agent_id, extra) in enumerate(events):
-        # Skip redundant SubagentStop after Stop
-        if event == "SubagentStop" and prev_event == "Stop":
-            prev_event = event
-            continue
-
-        is_interrupt = event == "PostToolUseFailure" and extra == "interrupt"
-
-        # Infer interrupt: UserPromptSubmit while in a turn at depth 0
-        if event == "UserPromptSubmit" and in_turn and subagent_depth == 0:
-            # Insert synthetic interrupt event
-            result.append(
-                ProcessedEvent(
-                    event="Interrupt",
-                    tool=None,
-                    agent_id=None,
-                    extra=None,
-                    effective_event="Interrupt",
-                )
-            )
-            in_turn = False
-
-        # Detect StopUndone: Stop followed by tool use (skip SubagentStop in lookahead)
-        effective_event = event
-        if event == "Stop":
-            look_idx = i + 1
-            while look_idx < len(events) and events[look_idx][0] == "SubagentStop":
-                look_idx += 1
-            if look_idx < len(events):
-                next_event = events[look_idx][0]
-                if next_event not in ("UserPromptSubmit", "Stop"):
-                    effective_event = "StopUndone"
-
-        result.append(
-            ProcessedEvent(
-                event=event,
-                tool=tool,
-                agent_id=agent_id,
-                extra=extra,
-                effective_event=effective_event,
-            )
-        )
-
-        # Update state for next iteration
-        if event == "UserPromptSubmit":
-            in_turn = True
-        elif (event == "Stop" or is_interrupt) and subagent_depth == 0:
-            in_turn = False
-        elif event == "SubagentStart":
-            subagent_depth += 1
-        elif event == "SubagentStop":
-            subagent_depth = max(0, subagent_depth - 1)
-
-        prev_event = event
-
-    return result
 
 
 @register
@@ -265,7 +177,7 @@ class EventsModule(Module):
 
         # Background styles
         backgrounds = config.backgrounds
-        context_bg: dict[RunContext, str] = {
+        context_bg: dict[ProcessedRunContext, str] = {
             "main": backgrounds.main,
             "user": backgrounds.user,
             "subagent": backgrounds.subagent,
@@ -277,17 +189,16 @@ class EventsModule(Module):
 
         # Compute boundary spacing (symmetric padding at run edges)
         boundary_spacing = spacing + (spacing % 2)  # Round up to even
-        half_boundary = boundary_spacing // 2
 
         # Build run renderables
-        run_renderables = []
-        for run in runs:
-            bg = context_bg.get(run.context, "")
-            brackets = getattr(brackets_config, run.context, ("", ""))
+        run_renderables: list[Run] = []
+        for processed_run in runs:
+            bg = context_bg.get(processed_run.context, "")
+            brackets = getattr(brackets_config, processed_run.context, ("", ""))
             open_bracket, close_bracket = brackets if bracket_mode else ("", "")
 
             # Create EventStyle for this run context
-            style = EventStyle(
+            event_style = EventStyle(
                 tool_icons=config.tool_icons,
                 event_icons=config.event_icons,
                 bash_icons=config.bash_icons,
@@ -295,52 +206,29 @@ class EventsModule(Module):
                 line_bars=config.line_bars,
             )
 
-            # Convert events to renderables
-            icons = []
-            for pe in run.events:
-                data = EventData(
-                    event=pe.effective_event,
-                    tool=pe.tool,
-                    agent_id=pe.agent_id,
-                    extra=pe.extra,
-                )
-                event_renderable = create_event(data, style)
-                icons.append(event_renderable)
+            # Convert EventData to EventBase renderables
+            events = [
+                create_event(event_data, event_style)
+                for event_data in processed_run.events
+            ]
 
-            if not icons:
+            if not events:
                 continue
 
-            # Inner grid: events with between-event spacing
-            # Rich grid padding does NOT add space after last column
-            inner = Table.grid(padding=(0, spacing, 0, 0))
-            for _ in icons:
-                inner.add_column()
-            inner.add_row(*icons)
-
-            # Apply background style to inner grid (flows into padding)
-            styled_inner = Styled(inner, style=bg) if bg else inner
-
-            # Add edge spacing only if needed (Table.grid gives empty cells min width 1)
-            if half_boundary > 0:
-                run_content = Table.grid(padding=0)
-                run_content.add_column()  # leading edge
-                run_content.add_column()  # inner content
-                run_content.add_column()  # trailing edge
-                run_content.add_row(
-                    Text(" " * half_boundary, style=bg),
-                    styled_inner,
-                    Text(" " * half_boundary, style=bg),
-                )
-            else:
-                run_content = styled_inner
-
-            # Add brackets around the run
-            open_text = Text.from_markup(open_bracket) if open_bracket else Text("")
-            close_text = Text.from_markup(close_bracket) if close_bracket else Text("")
-
-            bracketed = Table.grid()
-            bracketed.add_row(open_text, run_content, close_text)
-            run_renderables.append(bracketed)
+            # Create Run renderable
+            run_data = RunData(
+                context=processed_run.context,
+                events=events,
+                agent_id=processed_run.agent_id,
+            )
+            run_style = RunStyle(
+                background=bg,
+                open_bracket=open_bracket,
+                close_bracket=close_bracket,
+                spacing=spacing,
+                boundary_spacing=boundary_spacing,
+            )
+            run_renderables.append(Run(run_data, run_style))
 
         if not run_renderables:
             return ""
