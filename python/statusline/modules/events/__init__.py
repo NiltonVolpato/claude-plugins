@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Literal
-
 from rich.styled import Styled
 from rich.table import Table
 from rich.text import Text
@@ -18,28 +15,17 @@ from statusline.modules import Module, register
 from statusline.modules.events.event import (
     EventData,
     EventStyle,
-    create_event,
 )
 from statusline.modules.events.run import (
     Run,
+    RunContext,
     RunData,
     RunStyle,
 )
 from statusline.modules.events.truncate_left import TruncateLeft
 
-ProcessedRunContext = Literal["main", "user", "subagent"]
 
-
-@dataclass
-class ProcessedRun:
-    """A contiguous sequence of events in the same context."""
-
-    context: ProcessedRunContext
-    events: list[EventData] = field(default_factory=list)
-    agent_id: str | None = None
-
-
-def group_into_runs(events: list[EventTuple]) -> list[ProcessedRun]:
+def group_into_runs(events: list[EventTuple]) -> list[RunData]:
     """Group events into runs by context.
 
     A run is a contiguous sequence of events in the same context:
@@ -50,13 +36,13 @@ def group_into_runs(events: list[EventTuple]) -> list[ProcessedRun]:
     The SubagentStart/SubagentStop events within the main run provide
     visual markers (< >) to show which tools were invoked by subagents.
 
-    Returns a list of Run objects ready for rendering.
+    Returns a list of RunData objects ready for rendering.
     """
     if not events:
         return []
 
-    runs: list[ProcessedRun] = []
-    current_run: ProcessedRun | None = None
+    runs: list[RunData] = []
+    current_run: RunData | None = None
 
     # Track state for StopUndone detection and interrupt inference
     in_turn = events[0][0] not in ("UserPromptSubmit", None)
@@ -87,13 +73,13 @@ def group_into_runs(events: list[EventTuple]) -> list[ProcessedRun]:
                 current_run = None
             # Add synthetic interrupt as a user run
             interrupt_event = EventData(event="Interrupt")
-            interrupt_run = ProcessedRun(context="user", events=[interrupt_event])
+            interrupt_run = RunData(context="user", events=[interrupt_event])
             runs.append(interrupt_run)
             in_turn = False
 
         # Determine context for this event
         if event == "UserPromptSubmit":
-            context: ProcessedRunContext = "user"
+            context: RunContext = "user"
         elif event == "Interrupt" or (
             event == "PostToolUseFailure" and extra == "interrupt"
         ):
@@ -121,7 +107,7 @@ def group_into_runs(events: list[EventTuple]) -> list[ProcessedRun]:
         if start_new_run:
             if current_run is not None:
                 runs.append(current_run)
-            current_run = ProcessedRun(
+            current_run = RunData(
                 context=context,
                 events=[event_data],
             )
@@ -179,7 +165,7 @@ class EventsModule(Module):
 
         # Background styles
         backgrounds = config.backgrounds
-        context_bg: dict[ProcessedRunContext, str] = {
+        context_bg: dict[RunContext, str] = {
             "main": backgrounds.main,
             "user": backgrounds.user,
             "subagent": backgrounds.subagent,
@@ -192,43 +178,32 @@ class EventsModule(Module):
         # Compute boundary spacing (symmetric padding at run edges)
         boundary_spacing = spacing + (spacing % 2)  # Round up to even
 
+        # Shared EventStyle for all runs
+        event_style = EventStyle(
+            tool_icons=config.tool_icons,
+            event_icons=config.event_icons,
+            bash_icons=config.bash_icons,
+            backgrounds=backgrounds,
+            line_bars=config.line_bars,
+        )
+
         # Build run renderables
         run_renderables: list[Run] = []
-        for processed_run in runs:
-            bg = context_bg.get(processed_run.context, "")
-            brackets = getattr(brackets_config, processed_run.context, ("", ""))
-            open_bracket, close_bracket = brackets if bracket_mode else ("", "")
-
-            # Create EventStyle for this run context
-            event_style = EventStyle(
-                tool_icons=config.tool_icons,
-                event_icons=config.event_icons,
-                bash_icons=config.bash_icons,
-                backgrounds=backgrounds,
-                line_bars=config.line_bars,
-            )
-
-            # Convert EventData to EventBase renderables
-            events = [
-                create_event(event_data, event_style)
-                for event_data in processed_run.events
-            ]
-
-            if not events:
+        for run_data in runs:
+            if not run_data.events:
                 continue
 
-            # Create Run renderable
-            run_data = RunData(
-                context=processed_run.context,
-                events=events,
-                agent_id=processed_run.agent_id,
-            )
+            bg = context_bg.get(run_data.context, "")
+            brackets = getattr(brackets_config, run_data.context, ("", ""))
+            open_bracket, close_bracket = brackets if bracket_mode else ("", "")
+
             run_style = RunStyle(
                 background=bg,
                 open_bracket=open_bracket,
                 close_bracket=close_bracket,
                 spacing=spacing,
                 boundary_spacing=boundary_spacing,
+                event_style=event_style,
             )
             run_renderables.append(Run(run_data, run_style))
 

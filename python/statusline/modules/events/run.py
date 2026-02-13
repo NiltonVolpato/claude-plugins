@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from rich.styled import Styled
 from rich.table import Table
 from rich.text import Text
 
-from statusline.modules.events.event import EventBase
+from statusline.modules.events.event import EventData, EventStyle, create_event
 
 RunContext = Literal["main", "user", "subagent"]
 
@@ -19,7 +19,7 @@ class RunData:
     """Pure data for a run (contiguous sequence of events in same context)."""
 
     context: RunContext
-    events: list[EventBase]
+    events: list[EventData] = field(default_factory=list)
     agent_id: str | None = None
 
 
@@ -32,6 +32,7 @@ class RunStyle:
     close_bracket: str
     spacing: int
     boundary_spacing: int
+    event_style: EventStyle
 
 
 class Run:
@@ -42,7 +43,8 @@ class Run:
         self.style = style
 
     def __rich__(self) -> Table:
-        events = self.data.events
+        # Convert EventData to renderables
+        events = [create_event(ed, self.style.event_style) for ed in self.data.events]
         if not events:
             return Table.grid()
 
