@@ -6,7 +6,7 @@ from rich.styled import Styled
 from rich.table import Table
 from rich.text import Text
 
-from statusline.renderables import TruncateLeft
+from statusline.modules.events.truncate_left import TruncateLeft
 
 
 def render_plain(renderable, width: int = 40) -> str:

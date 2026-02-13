@@ -7,7 +7,7 @@ from rich.table import Table
 from statusline.config import ContextBarConfig, ModuleConfigUnion
 from statusline.input import ContextWindowInfo, InputModel
 from statusline.modules import Module, register
-from statusline.modules.bar import ExpandableBar
+from statusline.modules.context_bar.bar import ExpandableBar
 from statusline.templates import render_template
 
 PROGRESS_BAR_PLACEHOLDER = "\x00PROGRESS_BAR\x00"

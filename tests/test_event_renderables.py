@@ -5,7 +5,7 @@ from rich.console import Console
 from rich.text import Text
 
 from statusline.config import EventsBackgrounds, EventsLineBars
-from statusline.modules.event_renderables import (
+from statusline.modules.events.event import (
     BashEvent,
     EditEvent,
     EventData,

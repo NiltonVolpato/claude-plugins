@@ -10,8 +10,8 @@ from statusline.config import (
 )
 from statusline.input import EventsInfo, EventTuple, StatuslineInput
 from statusline.modules import get_module
-from statusline.modules.event_renderables import _lines_to_bar
-from statusline.renderables import TruncateLeft
+from statusline.modules.events.event import _lines_to_bar
+from statusline.modules.events.truncate_left import TruncateLeft
 from statusline.providers import EventsInfoProvider
 
 
@@ -424,7 +424,7 @@ class TestEventToIcon:
         """Get the plain text icon for an event."""
         from rich.console import Console
 
-        from statusline.modules.event_renderables import (
+        from statusline.modules.events.event import (
             EventData,
             EventStyle,
             create_event,
@@ -488,7 +488,7 @@ class TestEditWithLineCounts:
 
     def _get_style(self):
         """Get the EventStyle for testing."""
-        from statusline.modules.event_renderables import EventStyle
+        from statusline.modules.events.event import EventStyle
 
         return EventStyle(
             tool_icons=ASCII_TOOL_ICONS,
@@ -508,7 +508,7 @@ class TestEditWithLineCounts:
 
     def _render_edit(self, extra: str) -> Text:
         """Render an Edit event and return the Text."""
-        from statusline.modules.event_renderables import EditEvent, EventData
+        from statusline.modules.events.event import EditEvent, EventData
 
         data = EventData(event="PostToolUse", tool="Edit", extra=extra)
         renderable = EditEvent(data, self._get_style())

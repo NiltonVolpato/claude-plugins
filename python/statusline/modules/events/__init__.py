@@ -15,15 +15,17 @@ from statusline.config import (
 )
 from statusline.input import EventsInfo, EventTuple, InputModel
 from statusline.modules import Module, register
-from statusline.modules.event_renderables import (
+from statusline.modules.events.event import (
     EventData,
     EventStyle,
+    create_event,
+)
+from statusline.modules.events.run import (
     Run,
     RunData,
     RunStyle,
-    create_event,
 )
-from statusline.renderables import TruncateLeft
+from statusline.modules.events.truncate_left import TruncateLeft
 
 ProcessedRunContext = Literal["main", "user", "subagent"]
 

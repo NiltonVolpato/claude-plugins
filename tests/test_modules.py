@@ -19,7 +19,7 @@ from statusline.input import (
     WorkspaceInfo,
 )
 from statusline.modules import get_all_modules, get_module
-from statusline.modules.bar import ExpandableBar
+from statusline.modules.context_bar.bar import ExpandableBar
 
 
 class TestModelModule:
