@@ -43,11 +43,17 @@ A customizable status line for Claude Code with modular components.
    uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline install
    ```
 
+   This installs the `statusline` command via `uv tool install` and configures
+   Claude Code to use it. To update later:
+   ```bash
+   uv tool upgrade nv-claude-plugins
+   ```
+
 ### Preview
 
 Test how the status line looks with sample data:
 ```bash
-uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline preview
+statusline preview
 ```
 
 ### Available Modules

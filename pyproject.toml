@@ -1,5 +1,5 @@
 [project]
-name = "claude-plugins"
+name = "nv-claude-plugins"
 version = "0.1.0"
 description = "Python package for NiltonVolpato/claude-plugins"
 readme = "README.md"

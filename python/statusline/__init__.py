@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import traceback
 from pathlib import Path
@@ -188,18 +189,24 @@ preview = app.command(name="preview", help="Render a preview of the status line"
 )
 
 
+GITHUB_SOURCE = "git+https://github.com/NiltonVolpato/claude-plugins"
+
+
 @app.command()
 def install(
     local: bool = typer.Option(
-        False, "--local", help="Use local code for development (symlinks plugin, uses local render command)"
+        False, "--local", help="Use local code for development (editable install from local checkout)"
     ),
 ) -> None:
     """Configure Claude Code to use this statusline.
 
     This command:
-    1. Configures the statusLine render command in settings
-    2. For --local: uses local code for both render and event logging
-    3. Otherwise: uses uvx to fetch from GitHub, prints plugin install instructions
+    1. Installs the statusline tool via `uv tool install`
+    2. Configures the statusLine render command in settings
+    3. Prints instructions for enabling the event-logging plugin
+
+    For --local: installs in editable mode from the local checkout.
+    Otherwise: installs from GitHub.
 
     NOTE: The plugin must be installed/enabled separately for event logging.
     Without it, the statusline renders but the events module shows nothing.
@@ -207,9 +214,17 @@ def install(
     # Find the project root (where pyproject.toml lives)
     project_root = Path(__file__).parent.parent.parent.resolve()
 
+    # Install the tool persistently via uv tool install
+    if local:
+        install_cmd = ["uv", "tool", "install", "--force", "-e", str(project_root)]
+    else:
+        install_cmd = ["uv", "tool", "install", "--force", "--from", GITHUB_SOURCE, "nv-claude-plugins"]
+    typer.echo(f"Running: {' '.join(install_cmd)}")
+    subprocess.run(install_cmd, check=True)
+
+    # Configure settings.json — tool is now on PATH
     settings_path = Path.home() / ".claude" / "settings.json"
 
-    # Load existing settings or create new
     settings: dict = {}
     if settings_path.exists():
         try:
@@ -217,32 +232,22 @@ def install(
         except json.JSONDecodeError:
             pass
 
-    # Update statusLine configuration
-    if local:
-        # Use local uv run for development
-        settings["statusLine"] = {
-            "type": "command",
-            "command": f"cd {project_root} && uv run statusline --no-fail render",
-        }
-    else:
-        # Use uvx to fetch from GitHub
-        settings["statusLine"] = {
-            "type": "command",
-            "command": "uvx --from git+https://github.com/NiltonVolpato/claude-plugins statusline --no-fail render",
-        }
+    settings["statusLine"] = {
+        "type": "command",
+        "command": "statusline --no-fail render",
+    }
 
-    # Write settings
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
     typer.echo(f"Statusline render configured in {settings_path}")
 
+    typer.echo("\nTo enable event logging, install the plugin:")
+    typer.echo("  /plugin install statusline@nv-claude-plugins")
+
     if local:
-        # For local development, use --plugin-dir flag
         plugin_path = project_root / "plugins" / "statusline"
         typer.echo(f"\nTo test with the local plugin, restart Claude Code with:")
         typer.echo(f"  claude --plugin-dir {plugin_path}")
     else:
-        typer.echo("\nTo enable event logging, install the plugin:")
-        typer.echo("  /plugin install statusline@nv-claude-plugins")
         typer.echo("\nRestart Claude Code to see the changes.")
 
 
