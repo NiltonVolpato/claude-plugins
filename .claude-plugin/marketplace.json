@@ -10,7 +10,6 @@
     {
       "name": "master-programmer",
       "description": "Seek advice from the Master Programmer when faced with a dilemma and be enlightened!",
-      "version": "1.0.1",
       "author": {
         "name": "Nilton Volpato",
         "email": "nilton@volpa.to"
@@ -21,7 +20,6 @@
     {
       "name": "statusline",
       "description": "Event logging hooks for the statusline activity display",
-      "version": "1.0.0",
       "author": {
         "name": "Nilton Volpato",
         "email": "nilton@volpa.to"

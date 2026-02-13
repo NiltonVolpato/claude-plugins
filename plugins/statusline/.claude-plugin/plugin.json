@@ -1,7 +1,6 @@
 {
   "name": "statusline",
   "description": "Event logging hooks for the statusline activity display",
-  "version": "1.0.0",
   "author": { "name": "Nilton Volpato", "email": "nilton@volpa.to" },
   "repository": "https://github.com/NiltonVolpato/claude-plugins"
 }
