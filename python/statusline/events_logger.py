@@ -31,9 +31,33 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             data TEXT NOT NULL
         )
     """)
+    # Migration: replace ASC index with DESC (matches ORDER BY ts DESC queries)
+    conn.execute("DROP INDEX IF EXISTS idx_events_v2_session_ts")
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_events_v2_session_ts ON events_v2(session_id, ts)"
+        "CREATE INDEX IF NOT EXISTS idx_events_v2_session_ts_desc"
+        " ON events_v2(session_id, ts DESC)"
     )
+    # Migration: replace v1 trigger with simplified cleanup logic
+    conn.execute("DROP TRIGGER IF EXISTS trg_events_v2_cap")
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS trg_events_v2_cap_v2
+        AFTER INSERT ON events_v2
+        WHEN NEW.id % 100 = 0
+        BEGIN
+            -- Keep latest 250 events per session
+            DELETE FROM events_v2
+            WHERE session_id = NEW.session_id
+            AND id <= (
+                SELECT id FROM events_v2
+                WHERE session_id = NEW.session_id
+                ORDER BY id DESC
+                LIMIT 1 OFFSET 250
+            );
+            -- Delete events older than 7 days
+            DELETE FROM events_v2
+            WHERE ts < unixepoch('now', '-7 days');
+        END
+    """)
     conn.commit()
 
 
