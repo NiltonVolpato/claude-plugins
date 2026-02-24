@@ -1,7 +1,7 @@
 ---
 name: plan-approve
 description: Approve a draft plan and optionally begin implementation.
-argument-hint: <slug>
+argument-hint: "[slug]"
 disable-model-invocation: true
 ---
 
@@ -11,7 +11,7 @@ Approve the draft plan and optionally begin implementation.
 
 ## Steps
 
-1. Run the approve command:
+1. Run the approve command. The slug is optional — if not provided by the user, the CLI reads it from `current-draft.json` (written by `plan create`). If you know the slug from the planning session, pass it explicitly:
 
 ```bash
 python3 $SKILL_DIR/../plan/scripts/plan.py approve $ARGUMENTS

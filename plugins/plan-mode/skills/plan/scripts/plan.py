@@ -78,12 +78,31 @@ def plans_dir_for(cwd: str) -> Path:
     return Path(cwd) / ".claude" / "plans"
 
 
+def extract_slug_from_draft(path: Path) -> str:
+    """Extract the slug from a draft filename like '2026-02-24_04-48_add-auth.md'."""
+    stem = path.stem
+    # Remove the datetime prefix (YYYY-MM-DD_HH-MM_)
+    parts = stem.split("_", 2)
+    if len(parts) >= 3:
+        return parts[2]
+    return stem
+
+
 def find_draft(drafts_dir: Path, slug: str) -> Path | None:
     """Find the most recent draft matching the given slug."""
     pattern = f"*_{slug}.md"
     matches = sorted(drafts_dir.glob(pattern), reverse=True)
     if matches:
         return matches[0]
+    return None
+
+
+def find_latest_draft(drafts_dir: Path) -> Path | None:
+    """Find the most recent draft plan (excluding appendices)."""
+    all_drafts = sorted(drafts_dir.glob("*.md"), reverse=True)
+    for draft in all_drafts:
+        if not draft.stem.endswith("-appendix"):
+            return draft
     return None
 
 
@@ -94,6 +113,27 @@ def find_draft_appendix(drafts_dir: Path, slug: str) -> Path | None:
     if matches:
         return matches[0]
     return None
+
+
+def read_current_draft(plans_dir: Path) -> dict | None:
+    """Read current-draft.json, returning None if it doesn't exist."""
+    draft_file = plans_dir / "current-draft.json"
+    if not draft_file.exists():
+        return None
+    return json.loads(draft_file.read_text())
+
+
+def write_current_draft(plans_dir: Path, data: dict) -> None:
+    """Write current-draft.json."""
+    draft_file = plans_dir / "current-draft.json"
+    draft_file.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def remove_current_draft(plans_dir: Path) -> None:
+    """Remove current-draft.json if it exists."""
+    draft_file = plans_dir / "current-draft.json"
+    if draft_file.exists():
+        draft_file.unlink()
 
 
 def read_current_plan(plans_dir: Path) -> dict | None:
@@ -146,6 +186,14 @@ def cmd_create(slug: str, cwd: str | None = None, now: datetime | None = None) -
     plan_file.write_text(PLAN_TEMPLATE.format(title=title))
     appendix_file.write_text(APPENDIX_TEMPLATE.format(title=title))
 
+    write_current_draft(plans, {
+        "slug": slug,
+        "title": title,
+        "plan_file": str(plan_file),
+        "appendix_file": str(appendix_file),
+        "created_at": now.isoformat(timespec="seconds"),
+    })
+
     print(f"Draft plan created:")
     print(f"  Plan:     {plan_file}")
     print(f"  Appendix: {appendix_file}")
@@ -153,9 +201,10 @@ def cmd_create(slug: str, cwd: str | None = None, now: datetime | None = None) -
     print("Fill in the plan and appendix, then run `/plan-mode:plan-approve` when ready.")
 
 
-def cmd_approve(slug: str, cwd: str | None = None, now: datetime | None = None) -> None:
-    """Approve a draft plan by slug."""
-    validate_slug(slug)
+def cmd_approve(slug: str | None = None, cwd: str | None = None, now: datetime | None = None) -> None:
+    """Approve a draft plan by slug, or the most recent draft if no slug given."""
+    if slug is not None:
+        validate_slug(slug)
 
     if cwd is None:
         cwd = str(Path.cwd())
@@ -165,10 +214,24 @@ def cmd_approve(slug: str, cwd: str | None = None, now: datetime | None = None) 
     plans = plans_dir_for(cwd)
     drafts = plans / "drafts"
 
-    plan_file = find_draft(drafts, slug)
-    if plan_file is None:
-        print(f"Error: No draft plan found matching slug '{slug}'.", file=sys.stderr)
-        sys.exit(1)
+    if slug is not None:
+        plan_file = find_draft(drafts, slug)
+        if plan_file is None:
+            print(f"Error: No draft plan found matching slug '{slug}'.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # Try current-draft.json first, then fall back to latest draft file
+        current_draft = read_current_draft(plans)
+        if current_draft is not None:
+            slug = current_draft["slug"]
+            plan_file = find_draft(drafts, slug)
+        else:
+            plan_file = find_latest_draft(drafts)
+        if plan_file is None:
+            print("Error: No draft plans found.", file=sys.stderr)
+            sys.exit(1)
+        if slug is None:
+            slug = extract_slug_from_draft(plan_file)
 
     appendix_file = find_draft_appendix(drafts, slug)
 
@@ -197,6 +260,7 @@ def cmd_approve(slug: str, cwd: str | None = None, now: datetime | None = None) 
         current_plan_data["appendix_file"] = str(approved_appendix)
 
     write_current_plan(plans, current_plan_data)
+    remove_current_draft(plans)
 
     print(f"Plan approved: {title}")
     print(f"  Plan:     {approved_plan}")
@@ -329,10 +393,7 @@ def main(args: list[str] | None = None) -> None:
         cmd_create(args[1])
 
     elif command == "approve":
-        if len(args) < 2:
-            print("Usage: plan approve <slug>", file=sys.stderr)
-            sys.exit(1)
-        cmd_approve(args[1])
+        cmd_approve(args[1] if len(args) >= 2 else None)
 
     elif command == "start":
         cmd_start()

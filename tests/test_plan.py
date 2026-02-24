@@ -15,9 +15,13 @@ from plan import (
     cmd_done,
     cmd_session_check,
     cmd_start,
+    extract_slug_from_draft,
     find_draft,
     find_draft_appendix,
+    find_latest_draft,
     find_unchecked_items,
+    read_current_draft,
+    remove_current_draft,
     plans_dir_for,
     read_current_plan,
     slug_to_title,
@@ -137,6 +141,76 @@ class TestFindDraftAppendix:
 
     def test_returns_none_when_no_match(self, tmp_path: Path) -> None:
         assert find_draft_appendix(tmp_path, "add-auth") is None
+
+
+# ── extract_slug_from_draft / find_latest_draft ──────────────────────────────
+
+
+class TestExtractSlugFromDraft:
+    def test_standard_filename(self) -> None:
+        assert extract_slug_from_draft(Path("2026-02-24_04-48_add-auth.md")) == "add-auth"
+
+    def test_multi_word_slug(self) -> None:
+        assert (
+            extract_slug_from_draft(Path("2026-02-24_04-48_fix-login-bug.md"))
+            == "fix-login-bug"
+        )
+
+    def test_no_datetime_prefix(self) -> None:
+        assert extract_slug_from_draft(Path("something.md")) == "something"
+
+
+class TestFindLatestDraft:
+    def test_returns_most_recent(self, tmp_path: Path) -> None:
+        old = tmp_path / "2026-02-20_10-00_old-plan.md"
+        old.write_text("old")
+        new = tmp_path / "2026-02-24_04-48_new-plan.md"
+        new.write_text("new")
+        assert find_latest_draft(tmp_path) == new
+
+    def test_skips_appendices(self, tmp_path: Path) -> None:
+        (tmp_path / "2026-02-24_04-48_my-plan-appendix.md").write_text("appendix")
+        plan = tmp_path / "2026-02-24_04-48_my-plan.md"
+        plan.write_text("plan")
+        assert find_latest_draft(tmp_path) == plan
+
+    def test_returns_none_in_empty_dir(self, tmp_path: Path) -> None:
+        assert find_latest_draft(tmp_path) is None
+
+    def test_returns_none_when_only_appendices(self, tmp_path: Path) -> None:
+        (tmp_path / "2026-02-24_04-48_my-plan-appendix.md").write_text("appendix")
+        assert find_latest_draft(tmp_path) is None
+
+
+# ── current-draft.json ───────────────────────────────────────────────────────
+
+
+class TestCurrentDraft:
+    def test_create_writes_current_draft(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        plans = tmp_path / ".claude" / "plans"
+        draft = read_current_draft(plans)
+        assert draft is not None
+        assert draft["slug"] == "add-auth"
+        assert draft["title"] == "Add Auth"
+        assert "add-auth.md" in draft["plan_file"]
+        assert "add-auth-appendix.md" in draft["appendix_file"]
+
+    def test_approve_removes_current_draft(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        plans = tmp_path / ".claude" / "plans"
+        assert read_current_draft(plans) is None
+
+    def test_approve_no_slug_reads_current_draft(self, tmp_path: Path) -> None:
+        cmd_create("my-feature", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        plans = tmp_path / ".claude" / "plans"
+        current = read_current_plan(plans)
+        assert current["slug"] == "my-feature"
+
+    def test_remove_current_draft_noop_when_missing(self, tmp_path: Path) -> None:
+        remove_current_draft(tmp_path)  # should not raise
 
 
 # ── read_current_plan / write_current_plan ───────────────────────────────────
@@ -306,6 +380,27 @@ class TestCmdApprove:
         cmd_approve("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
         out = capsys.readouterr().out
         assert "Plan approved: Add Auth" in out
+
+    def test_no_slug_approves_latest_draft(self, tmp_path: Path) -> None:
+        self._create_draft(tmp_path, "add-auth")
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        plans = tmp_path / ".claude" / "plans"
+        current = read_current_plan(plans)
+        assert current["slug"] == "add-auth"
+        assert current["status"] == "approved"
+
+    def test_no_slug_picks_most_recent(self, tmp_path: Path) -> None:
+        cmd_create("old-feature", cwd=str(tmp_path), now=datetime(2026, 2, 20, 10, 0))
+        cmd_create("new-feature", cwd=str(tmp_path), now=datetime(2026, 2, 24, 10, 0))
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        plans = tmp_path / ".claude" / "plans"
+        current = read_current_plan(plans)
+        assert current["slug"] == "new-feature"
+
+    def test_no_slug_no_drafts_exits(self, tmp_path: Path) -> None:
+        (tmp_path / ".claude" / "plans" / "drafts").mkdir(parents=True)
+        with pytest.raises(SystemExit):
+            cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
 
 
 # ── cmd_start ────────────────────────────────────────────────────────────────
