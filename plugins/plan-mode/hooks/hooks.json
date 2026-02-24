@@ -1,0 +1,15 @@
+{
+  "description": "Plan lifecycle hooks",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "plan session-check"
+          }
+        ]
+      }
+    ]
+  }
+}
