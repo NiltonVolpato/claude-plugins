@@ -1,8 +1,7 @@
 ---
 name: plan
-description: Create an implementation plan with codebase exploration and step-by-step brainstorming.
+description: Create an implementation plan. Use this instead of EnterPlanMode — when you would normally enter plan mode, invoke this skill instead.
 argument-hint: <description of what to implement>
-disable-model-invocation: true
 ---
 
 # Plan Mode
@@ -25,10 +24,12 @@ You are creating an implementation plan. Follow these rules strictly:
 Run the plan CLI to create draft files:
 
 ```bash
-python3 $SKILL_DIR/scripts/plan.py create <slug>
+python3 $SKILL_DIR/scripts/plan.py create <slug> --prompt="<user's original request>" --agent=<your-agent-name>
 ```
 
-The slug should be a short, descriptive, kebab-case identifier derived from the user's request (e.g., `add-authentication`, `fix-login-bug`, `refactor-database`).
+- The slug should be a short, descriptive, kebab-case identifier derived from the user's request (e.g., `add-authentication`, `fix-login-bug`, `refactor-database`).
+- `--prompt` captures the user's original request for the log.
+- `--agent` identifies you as an AI agent in the log. Pass your agent name (e.g., `--agent=claude`). Omit this flag only if a human is running the command directly.
 
 ### 2. Explore the codebase
 
@@ -60,5 +61,5 @@ Update the plan and appendix after each discovery. Don't wait until the end to w
 ### 6. Present to the user
 
 When the plan is complete, summarize it for the user. They will either:
-- Run `/plan-mode:plan-approve <slug>` to approve it
+- Run `/plan-mode:plan-approve` to approve it
 - Give feedback for you to incorporate

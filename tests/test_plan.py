@@ -10,6 +10,7 @@ import pytest
 from plan import (
     APPENDIX_TEMPLATE,
     PLAN_TEMPLATE,
+    append_log_entry,
     cmd_approve,
     cmd_create,
     cmd_done,
@@ -20,8 +21,11 @@ from plan import (
     find_draft_appendix,
     find_latest_draft,
     find_unchecked_items,
+    format_log_entry,
+    get_identity,
     read_current_draft,
     remove_current_draft,
+    parse_flags,
     plans_dir_for,
     read_current_plan,
     slug_to_title,
@@ -265,37 +269,150 @@ class TestFindUncheckedItems:
         assert find_unchecked_items(f) == ["Indented", "More indented"]
 
 
+# ── get_identity / format_log_entry / append_log_entry ───────────────────
+
+
+class TestGetIdentity:
+    def test_default_is_user_at_hostname(self) -> None:
+        import getpass
+        import socket
+
+        expected = f"{getpass.getuser()}@{socket.gethostname()}"
+        assert get_identity() == expected
+
+    def test_agent_identity(self) -> None:
+        assert get_identity(agent="claude") == "agent:claude"
+
+    def test_agent_identity_custom_name(self) -> None:
+        assert get_identity(agent="plan-reviewer") == "agent:plan-reviewer"
+
+
+class TestFormatLogEntry:
+    def test_simple_action(self) -> None:
+        assert format_log_entry(FIXED_NOW, "alice@mac", "Created") == (
+            "- 2026-02-24 04:48 — Created by alice@mac"
+        )
+
+    def test_action_with_prompt(self) -> None:
+        assert format_log_entry(FIXED_NOW, "agent:claude", 'Created (prompt: "add auth")') == (
+            '- 2026-02-24 04:48 — Created (prompt: "add auth") by agent:claude'
+        )
+
+
+class TestAppendLogEntry:
+    def test_creates_log_section(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text("# Plan\n\n- [ ] Step 1\n")
+        append_log_entry(f, "- 2026-02-24 04:48 — Created by alice@mac")
+        assert f.read_text() == (
+            "# Plan\n\n- [ ] Step 1\n\n"
+            "## Log\n\n"
+            "- 2026-02-24 04:48 — Created by alice@mac\n"
+        )
+
+    def test_appends_to_existing_log(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text(
+            "# Plan\n\n## Log\n\n"
+            "- 2026-02-24 04:48 — Created by alice@mac\n"
+        )
+        append_log_entry(f, "- 2026-02-24 05:00 — Approved by bob@mac")
+        assert f.read_text() == (
+            "# Plan\n\n## Log\n\n"
+            "- 2026-02-24 04:48 — Created by alice@mac\n"
+            "- 2026-02-24 05:00 — Approved by bob@mac\n"
+        )
+
+    def test_strips_trailing_whitespace(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text("# Plan\n\n- [ ] Step 1\n\n\n")
+        append_log_entry(f, "- 2026-02-24 04:48 — Created by alice@mac")
+        assert f.read_text() == (
+            "# Plan\n\n- [ ] Step 1\n\n"
+            "## Log\n\n"
+            "- 2026-02-24 04:48 — Created by alice@mac\n"
+        )
+
+
+class TestParseFlags:
+    def test_no_flags(self) -> None:
+        assert parse_flags(["slug"]) == (["slug"], {})
+
+    def test_key_value_flag(self) -> None:
+        assert parse_flags(["slug", "--agent=claude"]) == (["slug"], {"agent": "claude"})
+
+    def test_multiple_flags(self) -> None:
+        positional, flags = parse_flags(["slug", "--agent=claude", "--prompt=add auth"])
+        assert positional == ["slug"]
+        assert flags == {"agent": "claude", "prompt": "add auth"}
+
+    def test_flag_without_value(self) -> None:
+        assert parse_flags(["--verbose"]) == ([], {"verbose": None})
+
+    def test_no_args(self) -> None:
+        assert parse_flags([]) == ([], {})
+
+
 # ── cmd_create ───────────────────────────────────────────────────────────────
 
 
 class TestCmdCreate:
+    def _plan_path(self, tmp_path: Path, slug: str = "add-auth") -> Path:
+        return tmp_path / ".claude" / "plans" / "drafts" / f"{FIXED_NOW_STR}_{slug}.md"
+
+    def _appendix_path(self, tmp_path: Path, slug: str = "add-auth") -> Path:
+        return tmp_path / ".claude" / "plans" / "drafts" / f"{FIXED_NOW_STR}_{slug}-appendix.md"
+
+    def _default_identity(self) -> str:
+        import getpass
+        import socket
+
+        return f"{getpass.getuser()}@{socket.gethostname()}"
+
     def test_creates_plan_and_appendix(self, tmp_path: Path) -> None:
         cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
-        drafts = tmp_path / ".claude" / "plans" / "drafts"
-        assert (drafts / f"{FIXED_NOW_STR}_add-auth.md").exists()
-        assert (drafts / f"{FIXED_NOW_STR}_add-auth-appendix.md").exists()
+        assert self._plan_path(tmp_path).exists()
+        assert self._appendix_path(tmp_path).exists()
 
-    def test_plan_content(self, tmp_path: Path) -> None:
+    def test_plan_content_with_log(self, tmp_path: Path) -> None:
         cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
-        plan = (
-            tmp_path
-            / ".claude"
-            / "plans"
-            / "drafts"
-            / f"{FIXED_NOW_STR}_add-auth.md"
+        expected = (
+            PLAN_TEMPLATE.format(title="Add Auth").rstrip("\n")
+            + "\n\n## Log\n\n"
+            + f"- 2026-02-24 04:48 — Created by {self._default_identity()}\n"
         )
-        assert plan.read_text() == PLAN_TEMPLATE.format(title="Add Auth")
+        assert self._plan_path(tmp_path).read_text() == expected
+
+    def test_plan_content_with_prompt(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", prompt="add user authentication", cwd=str(tmp_path), now=FIXED_NOW)
+        expected = (
+            PLAN_TEMPLATE.format(title="Add Auth").rstrip("\n")
+            + "\n\n## Log\n\n"
+            + f'- 2026-02-24 04:48 — Created (prompt: "add user authentication") by {self._default_identity()}\n'
+        )
+        assert self._plan_path(tmp_path).read_text() == expected
+
+    def test_plan_content_with_agent(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", agent="claude", cwd=str(tmp_path), now=FIXED_NOW)
+        expected = (
+            PLAN_TEMPLATE.format(title="Add Auth").rstrip("\n")
+            + "\n\n## Log\n\n"
+            + "- 2026-02-24 04:48 — Created by agent:claude\n"
+        )
+        assert self._plan_path(tmp_path).read_text() == expected
+
+    def test_plan_content_with_prompt_and_agent(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", prompt="add auth", agent="claude", cwd=str(tmp_path), now=FIXED_NOW)
+        expected = (
+            PLAN_TEMPLATE.format(title="Add Auth").rstrip("\n")
+            + "\n\n## Log\n\n"
+            + '- 2026-02-24 04:48 — Created (prompt: "add auth") by agent:claude\n'
+        )
+        assert self._plan_path(tmp_path).read_text() == expected
 
     def test_appendix_content(self, tmp_path: Path) -> None:
         cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
-        appendix = (
-            tmp_path
-            / ".claude"
-            / "plans"
-            / "drafts"
-            / f"{FIXED_NOW_STR}_add-auth-appendix.md"
-        )
-        assert appendix.read_text() == APPENDIX_TEMPLATE.format(title="Add Auth")
+        assert self._appendix_path(tmp_path).read_text() == APPENDIX_TEMPLATE.format(title="Add Auth")
 
     def test_creates_directories(self, tmp_path: Path) -> None:
         cmd_create("test-slug", cwd=str(tmp_path), now=FIXED_NOW)
@@ -317,20 +434,31 @@ class TestCmdCreate:
 
 
 class TestCmdApprove:
+    def _default_identity(self) -> str:
+        import getpass
+        import socket
+
+        return f"{getpass.getuser()}@{socket.gethostname()}"
+
     def _create_draft(self, tmp_path: Path, slug: str = "add-auth") -> None:
         cmd_create(slug, cwd=str(tmp_path), now=FIXED_NOW)
 
-    def test_copies_to_approved(self, tmp_path: Path) -> None:
+    def test_moves_to_approved(self, tmp_path: Path) -> None:
         self._create_draft(tmp_path)
         approve_now = datetime(2026, 2, 24, 5, 0)
-        cmd_approve("add-auth", cwd=str(tmp_path), now=approve_now)
+        cmd_approve(cwd=str(tmp_path), now=approve_now)
         approved = tmp_path / ".claude" / "plans" / "approved"
+        drafts = tmp_path / ".claude" / "plans" / "drafts"
+        # Approved files exist
         assert (approved / "2026-02-24_05-00_add-auth.md").exists()
         assert (approved / "2026-02-24_05-00_add-auth-appendix.md").exists()
+        # Draft files are gone
+        assert not (drafts / f"{FIXED_NOW_STR}_add-auth.md").exists()
+        assert not (drafts / f"{FIXED_NOW_STR}_add-auth-appendix.md").exists()
 
     def test_creates_current_plan_json(self, tmp_path: Path) -> None:
         self._create_draft(tmp_path)
-        cmd_approve("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
         plans = tmp_path / ".claude" / "plans"
         current = json.loads((plans / "current-plan.json").read_text())
         assert current == {
@@ -346,61 +474,71 @@ class TestCmdApprove:
             "status": "approved",
         }
 
-    def test_no_draft_exits(self, tmp_path: Path) -> None:
-        (tmp_path / ".claude" / "plans" / "drafts").mkdir(parents=True)
+    def test_no_current_draft_exits(self, tmp_path: Path) -> None:
+        (tmp_path / ".claude" / "plans").mkdir(parents=True)
         with pytest.raises(SystemExit):
-            cmd_approve("nonexistent", cwd=str(tmp_path), now=FIXED_NOW)
+            cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+
+    def test_appends_approve_log_entry(self, tmp_path: Path) -> None:
+        self._create_draft(tmp_path)
+        approve_now = datetime(2026, 2, 24, 5, 0)
+        cmd_approve(cwd=str(tmp_path), now=approve_now)
+        approved = (
+            tmp_path / ".claude" / "plans" / "approved" / "2026-02-24_05-00_add-auth.md"
+        )
+        content = approved.read_text()
+        identity = self._default_identity()
+        # Should have both create and approve log entries
+        assert f"- 2026-02-24 04:48 — Created by {identity}" in content
+        assert f"- 2026-02-24 05:00 — Approved by {identity}" in content
+
+    def test_appends_approve_log_with_agent(self, tmp_path: Path) -> None:
+        self._create_draft(tmp_path)
+        cmd_approve(agent="plan-reviewer", cwd=str(tmp_path), now=FIXED_NOW)
+        approved = (
+            tmp_path / ".claude" / "plans" / "approved" / f"{FIXED_NOW_STR}_add-auth.md"
+        )
+        content = approved.read_text()
+        assert "- 2026-02-24 04:48 — Approved by agent:plan-reviewer" in content
 
     def test_preserves_plan_content(self, tmp_path: Path) -> None:
         self._create_draft(tmp_path)
         # Modify the draft to have custom content
         draft = (
-            tmp_path
-            / ".claude"
-            / "plans"
-            / "drafts"
-            / f"{FIXED_NOW_STR}_add-auth.md"
+            tmp_path / ".claude" / "plans" / "drafts" / f"{FIXED_NOW_STR}_add-auth.md"
         )
         custom = "# Custom Plan\n\n- [ ] Step 1\n"
         draft.write_text(custom)
-        cmd_approve("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
         approved = (
-            tmp_path
-            / ".claude"
-            / "plans"
-            / "approved"
-            / f"{FIXED_NOW_STR}_add-auth.md"
+            tmp_path / ".claude" / "plans" / "approved" / f"{FIXED_NOW_STR}_add-auth.md"
         )
-        assert approved.read_text() == custom
+        content = approved.read_text()
+        # The custom content is preserved, plus an approve log entry is appended
+        assert content.startswith(custom.rstrip("\n"))
+        assert "Approved by" in content
 
     def test_prints_approval_message(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
         self._create_draft(tmp_path)
-        cmd_approve("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
         out = capsys.readouterr().out
         assert "Plan approved: Add Auth" in out
 
-    def test_no_slug_approves_latest_draft(self, tmp_path: Path) -> None:
-        self._create_draft(tmp_path, "add-auth")
+    def test_reads_from_current_draft(self, tmp_path: Path) -> None:
+        self._create_draft(tmp_path, "my-feature")
         cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
         plans = tmp_path / ".claude" / "plans"
         current = read_current_plan(plans)
-        assert current["slug"] == "add-auth"
+        assert current["slug"] == "my-feature"
         assert current["status"] == "approved"
 
-    def test_no_slug_picks_most_recent(self, tmp_path: Path) -> None:
-        cmd_create("old-feature", cwd=str(tmp_path), now=datetime(2026, 2, 20, 10, 0))
-        cmd_create("new-feature", cwd=str(tmp_path), now=datetime(2026, 2, 24, 10, 0))
+    def test_removes_current_draft_json(self, tmp_path: Path) -> None:
+        self._create_draft(tmp_path)
         cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
         plans = tmp_path / ".claude" / "plans"
-        current = read_current_plan(plans)
-        assert current["slug"] == "new-feature"
-
-    def test_no_slug_no_drafts_exits(self, tmp_path: Path) -> None:
-        (tmp_path / ".claude" / "plans" / "drafts").mkdir(parents=True)
-        with pytest.raises(SystemExit):
-            cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        assert read_current_draft(plans) is None
 
 
 # ── cmd_start ────────────────────────────────────────────────────────────────
@@ -409,7 +547,7 @@ class TestCmdApprove:
 class TestCmdStart:
     def _setup_approved(self, tmp_path: Path) -> None:
         cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
-        cmd_approve("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
 
     def test_updates_status(self, tmp_path: Path) -> None:
         self._setup_approved(tmp_path)
@@ -460,7 +598,7 @@ class TestCmdDone:
                 / f"{FIXED_NOW_STR}_add-auth.md"
             )
             draft.write_text(plan_content)
-        cmd_approve("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
         cmd_start(cwd=str(tmp_path), now=FIXED_NOW)
 
     def test_all_checked_completes(
@@ -526,11 +664,20 @@ class TestCmdDone:
 class TestCmdSessionCheck:
     def _setup_approved(self, tmp_path: Path) -> None:
         cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
-        cmd_approve("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
 
     def _setup_in_progress(self, tmp_path: Path) -> None:
         self._setup_approved(tmp_path)
         cmd_start(cwd=str(tmp_path), now=FIXED_NOW)
+
+    def _script_path(self) -> str:
+        return str(
+            Path(__file__).resolve().parent.parent
+            / "plugins" / "plan-mode" / "skills" / "plan" / "scripts" / "plan.py"
+        )
+
+    def _approved_dir(self, tmp_path: Path) -> Path:
+        return tmp_path / ".claude" / "plans" / "approved"
 
     def test_no_plan_outputs_nothing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -554,10 +701,19 @@ class TestCmdSessionCheck:
         cmd_session_check({"cwd": str(tmp_path)})
         out = capsys.readouterr().out
         result = json.loads(out)
-        context = result["hookSpecificOutput"]["additionalContext"]
-        assert "approved but not started" in context
-        assert "**Add Auth**" in context
-        assert "plan start" in context
+        approved = self._approved_dir(tmp_path)
+        plan_file = approved / f"{FIXED_NOW_STR}_add-auth.md"
+        appendix_file = approved / f"{FIXED_NOW_STR}_add-auth-appendix.md"
+        expected = "\n".join([
+            "A plan has been approved but not started: **Add Auth**.",
+            "",
+            f"- Plan: `{plan_file}`",
+            f"- Appendix: `{appendix_file}`",
+            "",
+            "Ask the user if they want to start implementing.",
+            f"Run `python3 {self._script_path()} start` when ready.",
+        ])
+        assert result == {"hookSpecificOutput": {"additionalContext": expected}}
 
     def test_in_progress_plan_message(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -567,34 +723,19 @@ class TestCmdSessionCheck:
         cmd_session_check({"cwd": str(tmp_path)})
         out = capsys.readouterr().out
         result = json.loads(out)
-        context = result["hookSpecificOutput"]["additionalContext"]
-        assert "in progress" in context
-        assert "**Add Auth**" in context
-        assert "plan done" in context
-
-    def test_approved_includes_file_paths(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
-        self._setup_approved(tmp_path)
-        capsys.readouterr()  # clear setup output
-        cmd_session_check({"cwd": str(tmp_path)})
-        out = capsys.readouterr().out
-        result = json.loads(out)
-        context = result["hookSpecificOutput"]["additionalContext"]
-        assert "add-auth.md" in context
-        assert "add-auth-appendix.md" in context
-
-    def test_in_progress_includes_file_paths(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture
-    ) -> None:
-        self._setup_in_progress(tmp_path)
-        capsys.readouterr()  # clear setup output
-        cmd_session_check({"cwd": str(tmp_path)})
-        out = capsys.readouterr().out
-        result = json.loads(out)
-        context = result["hookSpecificOutput"]["additionalContext"]
-        assert "add-auth.md" in context
-        assert "add-auth-appendix.md" in context
+        approved = self._approved_dir(tmp_path)
+        plan_file = approved / f"{FIXED_NOW_STR}_add-auth.md"
+        appendix_file = approved / f"{FIXED_NOW_STR}_add-auth-appendix.md"
+        expected = "\n".join([
+            "A plan is in progress: **Add Auth**.",
+            "",
+            f"- Plan: `{plan_file}` (check checkboxes for progress)",
+            f"- Appendix: `{appendix_file}`",
+            "",
+            "Continue from where it left off.",
+            f"Run `python3 {self._script_path()} done` when all tasks are complete.",
+        ])
+        assert result == {"hookSpecificOutput": {"additionalContext": expected}}
 
 
 # ── Full lifecycle ───────────────────────────────────────────────────────────
@@ -615,9 +756,12 @@ class TestLifecycle:
 
         # Approve
         approve_now = datetime(2026, 2, 24, 5, 0)
-        cmd_approve("my-feature", cwd=str(tmp_path), now=approve_now)
+        cmd_approve(cwd=str(tmp_path), now=approve_now)
         current = read_current_plan(plans)
         assert current["status"] == "approved"
+
+        # Draft files are gone (moved)
+        assert not plan_file.exists()
 
         # Session check shows approved
         import io
@@ -651,7 +795,7 @@ class TestLifecycle:
             / f"{FIXED_NOW_STR}_cleanup.md"
         )
         draft.write_text("# Cleanup\n\n- [x] Done\n")
-        cmd_approve("cleanup", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
         cmd_start(cwd=str(tmp_path), now=FIXED_NOW)
         cmd_done(cwd=str(tmp_path))
 

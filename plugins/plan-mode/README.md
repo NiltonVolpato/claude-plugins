@@ -5,19 +5,26 @@ Plan management plugin for Claude Code: create, approve, track, and resume imple
 ## Skills
 
 - `/plan-mode:plan <description>` — Create an implementation plan with codebase exploration
-- `/plan-mode:plan-approve <slug>` — Approve a draft plan and optionally begin implementation
+- `/plan-mode:plan-approve` — Approve the current draft plan and optionally begin implementation
 
 ## CLI
 
-The `plan` CLI manages plan lifecycle:
+The `plan.py` CLI manages plan lifecycle:
 
 ```
-plan create <slug>     Create a new draft plan
-plan approve <slug>    Approve a draft and set it as current
-plan start             Start implementing the current plan
-plan done              Mark the current plan as complete
-plan session-check     (Hook) Check for active plan on session start
+plan.py create <slug> [--prompt=...] [--agent=...]   Create a new draft plan
+plan.py approve [--agent=...]                         Approve the current draft
+plan.py start                                         Start implementing the current plan
+plan.py done                                          Mark the current plan as complete
+plan.py session-check                                 (Hook) Check for active plan on session start
 ```
+
+### Identity tracking
+
+Plan files include a `## Log` section that records who created and approved each plan.
+
+- By default, the log records `user@hostname`.
+- AI agents should pass `--agent=<name>` to identify themselves (e.g., `--agent=claude`).
 
 ## How it works
 

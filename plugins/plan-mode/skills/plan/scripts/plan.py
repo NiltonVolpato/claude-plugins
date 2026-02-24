@@ -2,15 +2,17 @@
 """Plan management CLI for Claude Code plugin.
 
 Subcommands:
-  create <slug>     Create a new draft plan
-  approve <slug>    Approve a draft plan
-  start             Start implementing the current plan
-  done              Mark the current plan as done
-  session-check     Hook: check for active plan on session start
+  create <slug>           Create a new draft plan
+  approve                 Approve the current draft plan
+  start                   Start implementing the current plan
+  done                    Mark the current plan as done
+  session-check           Hook: check for active plan on session start
 """
 
+import getpass
 import json
 import re
+import socket
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -54,6 +56,33 @@ APPENDIX_TEMPLATE = """\
 
 <!-- Links, docs, related issues -->
 """
+
+
+def get_identity(agent: str | None = None) -> str:
+    """Return an identity string for log entries.
+
+    If agent is provided, returns 'agent:<name>'.
+    Otherwise returns 'user@hostname'.
+    """
+    if agent is not None:
+        return f"agent:{agent}"
+    return f"{getpass.getuser()}@{socket.gethostname()}"
+
+
+def format_log_entry(now: datetime, identity: str, action: str) -> str:
+    """Format a single log entry line."""
+    timestamp = now.strftime("%Y-%m-%d %H:%M")
+    return f"- {timestamp} — {action} by {identity}"
+
+
+def append_log_entry(plan_file: Path, entry: str) -> None:
+    """Append a log entry to a plan file, creating the Log section if needed."""
+    text = plan_file.read_text()
+    if "\n## Log\n" in text:
+        text = text.rstrip("\n") + "\n" + entry + "\n"
+    else:
+        text = text.rstrip("\n") + "\n\n## Log\n\n" + entry + "\n"
+    plan_file.write_text(text)
 
 
 def validate_slug(slug: str) -> None:
@@ -164,7 +193,14 @@ def find_unchecked_items(plan_file: Path) -> list[str]:
 # ── Subcommands ──────────────────────────────────────────────────────────────
 
 
-def cmd_create(slug: str, cwd: str | None = None, now: datetime | None = None) -> None:
+def cmd_create(
+    slug: str,
+    *,
+    prompt: str | None = None,
+    agent: str | None = None,
+    cwd: str | None = None,
+    now: datetime | None = None,
+) -> None:
     """Create a new draft plan with the given slug."""
     validate_slug(slug)
 
@@ -186,6 +222,12 @@ def cmd_create(slug: str, cwd: str | None = None, now: datetime | None = None) -
     plan_file.write_text(PLAN_TEMPLATE.format(title=title))
     appendix_file.write_text(APPENDIX_TEMPLATE.format(title=title))
 
+    identity = get_identity(agent)
+    action = "Created"
+    if prompt:
+        action += f' (prompt: "{prompt}")'
+    append_log_entry(plan_file, format_log_entry(now, identity, action))
+
     write_current_draft(plans, {
         "slug": slug,
         "title": title,
@@ -201,39 +243,36 @@ def cmd_create(slug: str, cwd: str | None = None, now: datetime | None = None) -
     print("Fill in the plan and appendix, then run `/plan-mode:plan-approve` when ready.")
 
 
-def cmd_approve(slug: str | None = None, cwd: str | None = None, now: datetime | None = None) -> None:
-    """Approve a draft plan by slug, or the most recent draft if no slug given."""
-    if slug is not None:
-        validate_slug(slug)
-
+def cmd_approve(
+    *,
+    agent: str | None = None,
+    cwd: str | None = None,
+    now: datetime | None = None,
+) -> None:
+    """Approve the current draft plan."""
     if cwd is None:
         cwd = str(Path.cwd())
     if now is None:
         now = datetime.now()
 
     plans = plans_dir_for(cwd)
-    drafts = plans / "drafts"
+    current_draft = read_current_draft(plans)
+    if current_draft is None:
+        print("Error: No current draft found. Run `plan create` first.", file=sys.stderr)
+        sys.exit(1)
 
-    if slug is not None:
-        plan_file = find_draft(drafts, slug)
-        if plan_file is None:
-            print(f"Error: No draft plan found matching slug '{slug}'.", file=sys.stderr)
-            sys.exit(1)
-    else:
-        # Try current-draft.json first, then fall back to latest draft file
-        current_draft = read_current_draft(plans)
-        if current_draft is not None:
-            slug = current_draft["slug"]
-            plan_file = find_draft(drafts, slug)
-        else:
-            plan_file = find_latest_draft(drafts)
-        if plan_file is None:
-            print("Error: No draft plans found.", file=sys.stderr)
-            sys.exit(1)
-        if slug is None:
-            slug = extract_slug_from_draft(plan_file)
+    slug = current_draft["slug"]
+    plan_file = Path(current_draft["plan_file"])
+    appendix_file_str = current_draft.get("appendix_file")
+    appendix_file = Path(appendix_file_str) if appendix_file_str else None
 
-    appendix_file = find_draft_appendix(drafts, slug)
+    if not plan_file.exists():
+        print(f"Error: Draft plan file not found: {plan_file}", file=sys.stderr)
+        sys.exit(1)
+
+    # Append approve log entry before moving
+    identity = get_identity(agent)
+    append_log_entry(plan_file, format_log_entry(now, identity, "Approved"))
 
     approved_dir = plans / "approved"
     approved_dir.mkdir(parents=True, exist_ok=True)
@@ -242,12 +281,12 @@ def cmd_approve(slug: str | None = None, cwd: str | None = None, now: datetime |
     title = slug_to_title(slug)
 
     approved_plan = approved_dir / f"{datetime_str}_{slug}.md"
-    approved_plan.write_text(plan_file.read_text())
+    plan_file.rename(approved_plan)
 
     approved_appendix = None
-    if appendix_file is not None:
+    if appendix_file is not None and appendix_file.exists():
         approved_appendix = approved_dir / f"{datetime_str}_{slug}-appendix.md"
-        approved_appendix.write_text(appendix_file.read_text())
+        appendix_file.rename(approved_appendix)
 
     current_plan_data = {
         "slug": slug,
@@ -339,33 +378,40 @@ def cmd_session_check(hook_input: dict) -> None:
     if current is None:
         return
 
+    script = Path(__file__).resolve()
     status = current["status"]
     title = current["title"]
     plan_file = current["plan_file"]
     appendix_file = current.get("appendix_file", "")
 
     if status == "approved":
-        message = (
-            f"A plan has been approved but not started: **{title}**. "
-            f"Read the plan at `{plan_file}`"
-        )
+        lines = [
+            f"A plan has been approved but not started: **{title}**.",
+            "",
+            f"- Plan: `{plan_file}`",
+        ]
         if appendix_file:
-            message += f" and appendix at `{appendix_file}`"
-        message += (
-            ". Ask the user if they want to start implementing. "
-            "Run `plan start` when ready."
-        )
+            lines.append(f"- Appendix: `{appendix_file}`")
+        lines += [
+            "",
+            "Ask the user if they want to start implementing.",
+            f"Run `python3 {script} start` when ready.",
+        ]
+        message = "\n".join(lines)
     elif status == "in_progress":
-        message = (
-            f"A plan is in progress: **{title}**. "
-            f"Read the plan at `{plan_file}` (check checkboxes for progress)"
-        )
+        lines = [
+            f"A plan is in progress: **{title}**.",
+            "",
+            f"- Plan: `{plan_file}` (check checkboxes for progress)",
+        ]
         if appendix_file:
-            message += f" and appendix at `{appendix_file}`"
-        message += (
-            ". Continue from where it left off. "
-            "Run `plan done` when all tasks are complete."
-        )
+            lines.append(f"- Appendix: `{appendix_file}`")
+        lines += [
+            "",
+            "Continue from where it left off.",
+            f"Run `python3 {script} done` when all tasks are complete.",
+        ]
+        message = "\n".join(lines)
     else:
         return
 
@@ -374,6 +420,22 @@ def cmd_session_check(hook_input: dict) -> None:
 
 
 # ── CLI entry point ──────────────────────────────────────────────────────────
+
+
+def parse_flags(args: list[str]) -> tuple[list[str], dict[str, str | None]]:
+    """Separate positional args from --key=value flags."""
+    positional = []
+    flags: dict[str, str | None] = {}
+    for arg in args:
+        if arg.startswith("--"):
+            if "=" in arg:
+                key, value = arg[2:].split("=", 1)
+                flags[key] = value
+            else:
+                flags[arg[2:]] = None
+        else:
+            positional.append(arg)
+    return positional, flags
 
 
 def main(args: list[str] | None = None) -> None:
@@ -385,15 +447,16 @@ def main(args: list[str] | None = None) -> None:
         sys.exit(1)
 
     command = args[0]
+    positional, flags = parse_flags(args[1:])
 
     if command == "create":
-        if len(args) < 2:
-            print("Usage: plan create <slug>", file=sys.stderr)
+        if not positional:
+            print("Usage: plan create <slug> [--prompt=...] [--agent=...]", file=sys.stderr)
             sys.exit(1)
-        cmd_create(args[1])
+        cmd_create(positional[0], prompt=flags.get("prompt"), agent=flags.get("agent"))
 
     elif command == "approve":
-        cmd_approve(args[1] if len(args) >= 2 else None)
+        cmd_approve(agent=flags.get("agent"))
 
     elif command == "start":
         cmd_start()
