@@ -1,5 +1,5 @@
 ---
-name: plan
+name: plan+
 description: Create an implementation plan. Use this instead of EnterPlanMode — when you would normally enter plan mode, invoke this skill instead.
 argument-hint: <description of what to implement>
 ---
@@ -61,5 +61,5 @@ Update the plan and appendix after each discovery. Don't wait until the end to w
 ### 6. Present to the user
 
 When the plan is complete, summarize it for the user. They will either:
-- Run `/plan-mode:plan-approve` to approve it
+- Run `/plan+mode:plan+approve` to approve it
 - Give feedback for you to incorporate

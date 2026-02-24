@@ -240,7 +240,7 @@ def cmd_create(
     print(f"  Plan:     {plan_file}")
     print(f"  Appendix: {appendix_file}")
     print()
-    print("Fill in the plan and appendix, then run `/plan-mode:plan-approve` when ready.")
+    print("Fill in the plan and appendix, then run `/plan+mode:plan+approve` when ready.")
 
 
 def cmd_approve(

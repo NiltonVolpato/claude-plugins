@@ -28,14 +28,14 @@
       "homepage": "https://github.com/NiltonVolpato/claude-plugins/tree/main/plugins/statusline"
     },
     {
-      "name": "plan-mode",
+      "name": "plan+mode",
       "description": "Plan management: create, approve, track, and resume implementation plans across sessions",
       "author": {
         "name": "Nilton Volpato",
         "email": "nilton@volpa.to"
       },
-      "source": "./plugins/plan-mode",
-      "homepage": "https://github.com/NiltonVolpato/claude-plugins/tree/main/plugins/plan-mode"
+      "source": "./plugins/plan+mode",
+      "homepage": "https://github.com/NiltonVolpato/claude-plugins/tree/main/plugins/plan+mode"
     }
   ]
 }
