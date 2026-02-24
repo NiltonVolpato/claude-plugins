@@ -18,6 +18,7 @@ from statusline.config import (
     CONFIG_PATH,
     Config,
     generate_default_config_toml,
+    get_config_class,
     load_config,
 )
 from statusline.errors import StatuslineError, report_error
@@ -368,6 +369,44 @@ def module_info(
                 add_vars(theme_branch, theme_vars)
 
     console.print(tree)
+
+    # Configuration options section
+    config_cls = get_config_class(module_type or name)
+    if config_cls is not None:
+        _INTERNAL_FIELDS = {"type", "theme", "themes"}
+
+        def add_config_fields(branch: Tree, model_cls: type) -> None:
+            from pydantic import BaseModel
+
+            for field_name, field_info in model_cls.model_fields.items():
+                if field_name in _INTERNAL_FIELDS:
+                    continue
+                desc = field_info.description or ""
+                annotation = field_info.annotation
+                # Check if annotation is a nested BaseModel class
+                is_nested = isinstance(annotation, type) and issubclass(
+                    annotation, BaseModel
+                )
+                if is_nested:
+                    child = branch.add(
+                        f"[bold red].[/][green]{field_name}[/] [dim]{desc}[/]"
+                    )
+                    add_config_fields(child, annotation)
+                else:
+                    default = field_info.default
+                    default_str = ""
+                    if default is not None and not repr(default).endswith(
+                        "PydanticUndefined"
+                    ):
+                        default_str = f" [dim italic](default: {markup.escape(repr(default))})[/]"
+                    branch.add(
+                        f"[bold red].[/][green]{field_name}[/] [dim]{desc}[/]{default_str}"
+                    )
+
+        config_tree = Tree("[bold]Configuration options[/]")
+        add_config_fields(config_tree, config_cls)
+        console.print()
+        console.print(config_tree)
 
 
 @app.command()

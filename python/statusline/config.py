@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.resources
 import tomllib
 from pathlib import Path
-from typing import Annotated, Any, Literal, Self, Union
+from typing import Annotated, Any, Literal, Self, Union, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -33,72 +33,72 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 class SimpleModuleTheme(BaseModel):
     """Theme fields for simple modules (model, workspace, git, cost, context, version)."""
 
-    color: str
-    format: str
-    label: str = ""  # Optional - not all themes require label
+    color: str = Field(description="Text color (e.g., 'cyan', '#ff0000')")
+    format: str = Field(description="Jinja2 format template")
+    label: str = Field(default="", description="Label prefix (set by theme)")
 
 
 class BarTheme(BaseModel):
     """Theme fields for progress bar rendering."""
 
-    left: str
-    right: str
-    full: str
-    empty: str
-    full_left: str = ""  # Optional end caps
-    empty_left: str = ""
-    full_right: str = ""
-    empty_right: str = ""
-    width: int = 10
+    left: str = Field(description="Left frame character (outside the bar)")
+    right: str = Field(description="Right frame character (outside the bar)")
+    full: str = Field(description="Character for filled bar segments")
+    empty: str = Field(description="Character for empty bar segments")
+    full_left: str = Field(default="", description="Left end cap when filled")
+    empty_left: str = Field(default="", description="Left end cap when empty")
+    full_right: str = Field(default="", description="Right end cap when filled")
+    empty_right: str = Field(default="", description="Right end cap when empty")
+    width: int = Field(default=10, description="Bar width in characters")
 
 
 class ContextBarTheme(BaseModel):
     """Theme fields for context_bar module."""
 
-    format: str
-    bar: BarTheme
+    format: str = Field(description="Jinja2 format template")
+    bar: BarTheme = Field(description="Progress bar appearance")
 
 
 class EventsBackgrounds(BaseModel):
     """Background colors for different run contexts."""
 
-    main: str
-    user: str
-    subagent: str
-    edit_bar: str
+    main: str = Field(description="Background for main context")
+    user: str = Field(description="Background for user context")
+    subagent: str = Field(description="Background for subagent context")
+    edit_bar: str = Field(description="Background for edit bar")
 
 
 class EventsRunBrackets(BaseModel):
     """Bracket pairs for each run context."""
 
-    main: tuple[str, str]
-    user: tuple[str, str]
-    subagent: tuple[str, str]
+    main: tuple[str, str] = Field(description="Bracket pair for main context")
+    user: tuple[str, str] = Field(description="Bracket pair for user context")
+    subagent: tuple[str, str] = Field(description="Bracket pair for subagent context")
 
 
 class EventsLineBars(BaseModel):
     """Line count bar configuration."""
 
-    chars: str
-    thresholds: list[int]
+    chars: str = Field(description="Characters for bar height levels")
+    thresholds: list[int] = Field(description="Line count thresholds for each bar level")
 
 
 class EventsTheme(BaseModel):
     """Theme fields for events module."""
 
-    spacing: int
-    run_spacing: str = ""
-    limit: int
-    left: str
-    right: str
-    brackets: bool
-    background: str = ""
-    backgrounds: EventsBackgrounds
-    run_brackets: EventsRunBrackets
-    tool_icons: dict[str, str]
-    bash_icons: dict[str, str]
-    event_icons: dict[str, str]
-    line_bars: EventsLineBars
+    spacing: int = Field(description="Spacing between events")
+    run_spacing: str = Field(default="", description="Spacing between runs")
+    limit: int = Field(description="Maximum number of events to display")
+    left: str = Field(description="Left bracket character")
+    right: str = Field(description="Right bracket character")
+    brackets: bool = Field(description="Show brackets around runs")
+    background: str = Field(default="", description="Default background color")
+    backgrounds: EventsBackgrounds = Field(description="Per-context background colors")
+    run_brackets: EventsRunBrackets = Field(description="Per-context bracket pairs")
+    tool_icons: dict[str, str] = Field(description="Tool name to icon mapping")
+    bash_icons: dict[str, str] = Field(description="Bash command to icon mapping")
+    event_icons: dict[str, str] = Field(description="Event type to icon mapping")
+    line_bars: EventsLineBars = Field(description="Line count bar visualization")
 
 
 # =============================================================================
@@ -118,7 +118,7 @@ class BaseModuleConfig(BaseModel):
     type: str  # Required - discriminator field
     theme: str = ""  # Selected theme name (set by config loading)
     themes: dict[str, Any] = Field(default_factory=dict)
-    expand: bool = False
+    expand: bool = Field(default=False, description="Expand to fill available space")
 
     @model_validator(mode="after")
     def apply_theme_overrides(self) -> Self:
@@ -213,6 +213,29 @@ ModuleConfigUnion = Annotated[
 
 # Type alias for backward compatibility during migration
 ModuleConfig = ModuleConfigUnion
+
+
+def get_config_class(module_type: str) -> type[BaseModuleConfig] | None:
+    """Get the config class for a module type string.
+
+    Inspects the ModuleConfigUnion discriminated union to find the config class
+    whose ``type`` literal matches *module_type*.
+    """
+    # Unwrap Annotated[Union[...], Field(...)] → Union[...] → individual classes
+    annotated_args = get_args(ModuleConfigUnion)
+    for arg in annotated_args:
+        if get_origin(arg) is Union:
+            # This is the Union — unwrap its members
+            for cls in get_args(arg):
+                if not isinstance(cls, type):
+                    continue
+                type_field = cls.model_fields.get("type")
+                if type_field is None:
+                    continue
+                literal_args = get_args(type_field.annotation)
+                if literal_args and module_type in literal_args:
+                    return cls
+    return None
 
 
 class RowLayout(BaseModel):

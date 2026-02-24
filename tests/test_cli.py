@@ -151,12 +151,20 @@ class TestCLIModules:
         assert result.returncode == 0
         assert "display_name" in result.stdout
         assert "Opus 4.5" in result.stdout
+        # Configuration options section
+        assert "Configuration options" in result.stdout
+        assert "color" in result.stdout
+        assert "format" in result.stdout
 
     def test_module_info_alias(self):
         result = run_statusline("module", "info", "context_bar")
         assert result.returncode == 0
         assert "context_bar" in result.stdout
         assert "context" in result.stdout
+        # Configuration options section with nested bar options
+        assert "Configuration options" in result.stdout
+        assert "width" in result.stdout
+        assert "Bar width in characters" in result.stdout
 
 
 class TestCLIConfig:
