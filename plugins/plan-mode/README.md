@@ -1,11 +1,11 @@
-# plan+mode
+# plan-mode
 
 Plan management plugin for Claude Code: create, approve, track, and resume implementation plans across sessions.
 
 ## Skills
 
-- `/plan+mode:plan+ <description>` — Create an implementation plan with codebase exploration
-- `/plan+mode:plan+approve` — Approve the current draft plan and optionally begin implementation
+- `/plan-mode:plan+ <description>` — Create an implementation plan with codebase exploration
+- `/plan-mode:plan+approve` — Approve the current draft plan and optionally begin implementation
 
 ## CLI
 
@@ -28,8 +28,8 @@ Plan files include a `## Log` section that records who created and approved each
 
 ## How it works
 
-1. **Create**: `/plan+mode:plan+` explores the codebase and writes a plan with checkboxes
-2. **Approve**: `/plan+mode:plan+approve` archives the plan and sets it as current
+1. **Create**: `/plan-mode:plan+` explores the codebase and writes a plan with checkboxes
+2. **Approve**: `/plan-mode:plan+approve` archives the plan and sets it as current
 3. **Resume**: On session start, a hook detects the active plan and prompts continuation
 4. **Complete**: When all checkboxes are ticked, `plan done` clears the current plan
 

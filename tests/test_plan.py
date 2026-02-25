@@ -673,7 +673,7 @@ class TestCmdSessionCheck:
     def _script_path(self) -> str:
         return str(
             Path(__file__).resolve().parent.parent
-            / "plugins" / "plan+mode" / "skills" / "plan+" / "scripts" / "plan.py"
+            / "plugins" / "plan-mode" / "skills" / "plan+" / "scripts" / "plan.py"
         )
 
     def _approved_dir(self, tmp_path: Path) -> Path:

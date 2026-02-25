@@ -61,5 +61,5 @@ Update the plan and appendix after each discovery. Don't wait until the end to w
 ### 6. Present to the user
 
 When the plan is complete, summarize it for the user. They will either:
-- Run `/plan+mode:plan+approve` to approve it
+- Run `/plan-mode:plan+approve` to approve it
 - Give feedback for you to incorporate
