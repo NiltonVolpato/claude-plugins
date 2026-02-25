@@ -24,21 +24,11 @@ PLAN_TEMPLATE = """\
 
 ## Context
 
-<!-- Why is this change needed? What problem does it solve? -->
+## Steps
 
-## Implementation Steps
-
-<!-- Each step should be a checkbox. Be specific enough that a fresh session can follow. -->
-
-- [ ] Step 1
-- [ ] Step 2
+## Files
 
 ## Verification
-
-<!-- How to verify the implementation is correct -->
-
-- [ ] Tests pass
-- [ ] Manual verification
 """
 
 APPENDIX_TEMPLATE = """\
@@ -46,15 +36,9 @@ APPENDIX_TEMPLATE = """\
 
 ## Codebase Findings
 
-<!-- File paths, API notes, patterns with file:line references -->
-
 ## Architecture Notes
 
-<!-- Key design decisions, constraints, trade-offs -->
-
 ## References
-
-<!-- Links, docs, related issues -->
 """
 
 
@@ -179,14 +163,23 @@ def write_current_plan(plans_dir: Path, data: dict) -> None:
     current_file.write_text(json.dumps(data, indent=2) + "\n")
 
 
+_UNCHECKED_PATTERNS = [
+    re.compile(r"#+ \[ \] (.*)"),  # ### [ ] Heading
+    re.compile(r"- \[ \] (.*)"),   # - [ ] Bullet
+]
+
+
 def find_unchecked_items(plan_file: Path) -> list[str]:
     """Find all unchecked checkbox items in a plan file."""
     text = plan_file.read_text()
     unchecked = []
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("- [ ]"):
-            unchecked.append(stripped[6:].strip())
+        for pattern in _UNCHECKED_PATTERNS:
+            m = pattern.fullmatch(stripped)
+            if m:
+                unchecked.append(m.group(1).strip())
+                break
     return unchecked
 
 

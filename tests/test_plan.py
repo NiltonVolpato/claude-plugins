@@ -268,6 +268,37 @@ class TestFindUncheckedItems:
         f.write_text("  - [ ] Indented\n    - [ ] More indented\n")
         assert find_unchecked_items(f) == ["Indented", "More indented"]
 
+    def test_step_heading_unchecked(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text("### [ ] 1. Add migration\n")
+        assert find_unchecked_items(f) == ["1. Add migration"]
+
+    def test_step_heading_checked(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text("### [x] 1. Add migration\n")
+        assert find_unchecked_items(f) == []
+
+    def test_phase_heading_unchecked(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text("## [ ] Phase 1: Database changes\n")
+        assert find_unchecked_items(f) == ["Phase 1: Database changes"]
+
+    def test_phase_heading_checked(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text("## [x] Phase 1: Database changes\n")
+        assert find_unchecked_items(f) == []
+
+    def test_mixed_headings_and_bullets(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text(
+            "## [ ] Phase 1\n"
+            "### [x] 1. Done step\n"
+            "### [ ] 2. Pending step\n"
+            "- [x] Done bullet\n"
+            "- [ ] Pending bullet\n"
+        )
+        assert find_unchecked_items(f) == ["Phase 1", "2. Pending step", "Pending bullet"]
+
 
 # ── get_identity / format_log_entry / append_log_entry ───────────────────
 

@@ -22,7 +22,10 @@ python3 $SKILL_DIR/../plan+/scripts/plan.py approve
    - Run: `python3 $SKILL_DIR/../plan+/scripts/plan.py start`
    - Read the plan and appendix files
    - Begin working through the checkboxes in order
-   - Check off each `- [ ]` item as you complete it (change to `- [x]`)
+   - Check off each item as you complete it:
+     - `## [ ]` → `## [x]` for phase headings
+     - `### [ ]` → `### [x]` for step headings
+     - `- [ ]` → `- [x]` for bullet items
 
 4. If the user wants to defer:
    - Confirm: "Plan approved and saved. A new session will pick it up automatically."
