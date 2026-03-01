@@ -23,9 +23,9 @@ python3 $SKILL_DIR/../plan+/scripts/plan.py approve
    - Read the plan and appendix files
    - Begin working through the checkboxes in order
    - Check off each item as you complete it:
-     - `## [ ]` → `## [x]` for phase headings
+     - `## [ ]` → `## [x]` for phase headings (`## [ ] Phase N of M: Title`)
      - `### [ ]` → `### [x]` for step headings
-     - `- [ ]` → `- [x]` for bullet items
+     - `- [ ]` → `- [x]` for bullet items (verification, sub-tasks)
 
 4. If the user wants to defer:
    - Confirm: "Plan approved and saved. A new session will pick it up automatically."

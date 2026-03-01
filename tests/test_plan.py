@@ -280,24 +280,105 @@ class TestFindUncheckedItems:
 
     def test_phase_heading_unchecked(self, tmp_path: Path) -> None:
         f = tmp_path / "plan.md"
-        f.write_text("## [ ] Phase 1: Database changes\n")
-        assert find_unchecked_items(f) == ["Phase 1: Database changes"]
+        f.write_text("## [ ] Phase 1 of 2: Database changes\n")
+        assert find_unchecked_items(f) == ["Phase 1 of 2: Database changes"]
 
     def test_phase_heading_checked(self, tmp_path: Path) -> None:
         f = tmp_path / "plan.md"
-        f.write_text("## [x] Phase 1: Database changes\n")
+        f.write_text("## [x] Phase 1 of 2: Database changes\n")
         assert find_unchecked_items(f) == []
 
     def test_mixed_headings_and_bullets(self, tmp_path: Path) -> None:
         f = tmp_path / "plan.md"
         f.write_text(
-            "## [ ] Phase 1\n"
+            "## [ ] Phase 1 of 2\n"
             "### [x] 1. Done step\n"
             "### [ ] 2. Pending step\n"
             "- [x] Done bullet\n"
             "- [ ] Pending bullet\n"
         )
-        assert find_unchecked_items(f) == ["Phase 1", "2. Pending step", "Pending bullet"]
+        assert find_unchecked_items(f) == [
+            "Phase 1 of 2",
+            "2. Pending step",
+            "Pending bullet",
+        ]
+
+    def test_skips_fenced_code_blocks(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text(
+            "### [x] 1. Done\n"
+            "\n"
+            "```markdown\n"
+            "## [ ] Phase 1 of 2: Example\n"
+            "### [ ] 1. Example step\n"
+            "- [ ] Example bullet\n"
+            "```\n"
+            "\n"
+            "- [ ] Real bullet\n"
+        )
+        assert find_unchecked_items(f) == ["Real bullet"]
+
+    def test_skips_tilde_code_blocks(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text(
+            "~~~\n"
+            "- [ ] Inside code block\n"
+            "~~~\n"
+            "- [ ] Outside\n"
+        )
+        assert find_unchecked_items(f) == ["Outside"]
+
+    def test_multi_phase_plan_with_per_phase_verification(self, tmp_path: Path) -> None:
+        f = tmp_path / "plan.md"
+        f.write_text(
+            "# My Plan\n"
+            "\n"
+            "## Context\n"
+            "\n"
+            "Some context.\n"
+            "\n"
+            "## [x] Phase 1 of 2: Database changes\n"
+            "\n"
+            "### [x] 1. Add migration\n"
+            "\n"
+            "Details.\n"
+            "\n"
+            "### [x] 2. Update model and tests\n"
+            "\n"
+            "Details.\n"
+            "\n"
+            "### Files\n"
+            "- `src/db/migrations/`\n"
+            "\n"
+            "### Verification\n"
+            "- [x] `pytest tests/test_models.py` passes\n"
+            "\n"
+            "## [ ] Phase 2 of 2: API layer\n"
+            "\n"
+            "### [x] 3. Add endpoint\n"
+            "\n"
+            "Details.\n"
+            "\n"
+            "### [ ] 4. Add integration tests\n"
+            "\n"
+            "Details.\n"
+            "\n"
+            "### Files\n"
+            "- `src/api/preferences.py`\n"
+            "\n"
+            "### Verification\n"
+            "- [ ] `pytest tests/test_preferences_api.py` passes\n"
+            "\n"
+            "## Verification\n"
+            "\n"
+            "- [ ] Full `pytest` passes\n"
+        )
+        assert find_unchecked_items(f) == [
+            "Phase 2 of 2: API layer",
+            "4. Add integration tests",
+            "`pytest tests/test_preferences_api.py` passes",
+            "Full `pytest` passes",
+        ]
 
 
 # ── get_identity / format_log_entry / append_log_entry ───────────────────
@@ -847,7 +928,10 @@ class TestCmdSessionCheck:
             "Ask the user if they want to start implementing.",
             f"Run `python3 {self._script_path()} start` when ready.",
         ])
-        assert result == {"hookSpecificOutput": {"additionalContext": expected}}
+        assert result == {"hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": expected,
+        }}
 
     def test_in_progress_plan_message(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -873,7 +957,10 @@ class TestCmdSessionCheck:
             "  - `- [ ]` → `- [x]` for bullet items",
             f"Run `python3 {self._script_path()} done` when all tasks are complete.",
         ])
-        assert result == {"hookSpecificOutput": {"additionalContext": expected}}
+        assert result == {"hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": expected,
+        }}
 
 
 # ── Full lifecycle ───────────────────────────────────────────────────────────

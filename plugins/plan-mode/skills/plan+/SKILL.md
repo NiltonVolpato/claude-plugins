@@ -18,36 +18,64 @@ You are creating an implementation plan. Follow these rules strictly:
 
 ## Plan format
 
-### Checkbox syntax
+### Phases
 
-Steps use heading-level checkboxes. Bullet checkboxes are for sub-items or verification only.
+A phase is a **testable checkpoint** — after completing it, the build passes and tests validate the new behavior. Split work into `## [ ] Phase N of M` phases when changes can be implemented and verified in stages.
+
+**Rules:**
+- Each phase must leave the codebase in a buildable, testable state.
+- Tests for code introduced in a phase belong in that same phase.
+- Each phase contains its own `### Files` and `### Verification` sections.
+- Slice vertically (by feature/behavior), not horizontally (by file type).
+- Always use `## [ ] Phase N of M: Title` — even single-phase plans (`Phase 1 of 1`).
+
+**Bad** — horizontal slicing, nothing compiles until all 3 are done:
+> Phase 1: Config changes — adds fields nothing uses yet
+> Phase 2: Factory changes — needs Phase 1, breaks tests
+> Phase 3: Update tests — tests separated from the code they test
+
+**Good** — vertical slicing, each phase is green:
+> Phase 1 of 2: Anthropic provider — config + factory + tests for Anthropic
+> Phase 2 of 2: OpenAI provider — config + factory + tests for OpenAI
+
+### Example
 
 ```markdown
-## [ ] Phase 1: Database changes
+## [ ] Phase 1 of 2: Database changes
 
 ### [ ] 1. Add migration for user preferences table
 
 Description of what to do, why, files involved, and code snippets
 for any non-trivial logic.
 
-### [ ] 2. Update the User model
+### [ ] 2. Update the User model and add tests
 
 ...
 
-## [ ] Phase 2: API layer
-
-### [ ] 3. Add preferences endpoint
-
-...
-
-## Files
-
+### Files
 - `src/db/migrations/` — new migration
 - `src/models/user.py` — model changes
+- `tests/test_models.py` — model tests
+
+### Verification
+- [ ] `pytest tests/test_models.py` passes
+
+## [ ] Phase 2 of 2: API layer
+
+### [ ] 3. Add preferences endpoint and integration tests
+
+...
+
+### Files
+- `src/api/preferences.py` — new endpoint
+- `tests/test_preferences_api.py` — integration tests
+
+### Verification
+- [ ] `pytest tests/test_preferences_api.py` passes
 
 ## Verification
 
-- [ ] `pytest` passes
+- [ ] Full `pytest` passes
 - [ ] Manual test of preferences endpoint
 ```
 
@@ -60,16 +88,6 @@ Each `### [ ]` step must contain enough detail that:
 Include: what changes, why (when non-obvious), files to modify, and code snippets for non-trivial logic. Reference existing patterns from the appendix rather than reinventing.
 
 Don't make tasks too fine-grained — a step is a meaningful unit of work, not a single-line item.
-
-### Phases
-
-Split work into `## [ ]` phases whenever changes can be made and tested in isolation. This lets you edit, test, and validate incrementally instead of discovering breakage after a big batch.
-
-Use phases whenever you can change two modules separately, even if the plan requires changing both. A single-phase plan can omit the phase headings and use `## Steps` directly.
-
-### Files section
-
-Include a `## Files` section (between Steps and Verification) listing all files the plan will modify. This is a quick-reference summary — files are already mentioned in individual steps.
 
 ## Workflow
 
@@ -107,9 +125,8 @@ As you discover things, immediately write them to the appendix file:
 
 Write the implementation plan:
 - **Context**: Why this change is needed, what problem it solves
-- **Steps**: `### [ ]` sections following the format described above
-- **Files**: Quick-reference list of all files to modify
-- **Verification**: How to verify correctness (tests, manual checks)
+- **Phases**: `## [ ] Phase N of M` sections, each with `### [ ]` steps, `### Files`, and `### Verification`
+- **Verification**: Global verification for full-suite and cross-cutting checks
 
 ### 5. Build incrementally
 

@@ -25,10 +25,6 @@ PLAN_TEMPLATE = """\
 
 ## Context
 
-## Steps
-
-## Files
-
 ## Verification
 """
 
@@ -171,11 +167,20 @@ _UNCHECKED_PATTERNS = [
 
 
 def find_unchecked_items(plan_file: Path) -> list[str]:
-    """Find all unchecked checkbox items in a plan file."""
+    """Find all unchecked checkbox items in a plan file.
+
+    Skips items inside fenced code blocks (``` or ~~~).
+    """
     text = plan_file.read_text()
     unchecked = []
+    in_code_block = False
     for line in text.splitlines():
         stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
         for pattern in _UNCHECKED_PATTERNS:
             m = pattern.fullmatch(stripped)
             if m:
