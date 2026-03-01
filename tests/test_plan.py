@@ -23,9 +23,9 @@ from plan import (
     find_unchecked_items,
     format_log_entry,
     get_identity,
+    build_parser,
     read_current_draft,
     remove_current_draft,
-    parse_flags,
     plans_dir_for,
     read_current_plan,
     slug_to_title,
@@ -365,23 +365,66 @@ class TestAppendLogEntry:
         )
 
 
-class TestParseFlags:
-    def test_no_flags(self) -> None:
-        assert parse_flags(["slug"]) == (["slug"], {})
+class TestBuildParser:
+    def test_create_slug_only(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["create", "add-auth"])
+        assert args.command == "create"
+        assert args.slug == "add-auth"
+        assert args.prompt is None
+        assert args.agent is None
+        assert args.force is False
 
-    def test_key_value_flag(self) -> None:
-        assert parse_flags(["slug", "--agent=claude"]) == (["slug"], {"agent": "claude"})
+    def test_create_all_flags(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["create", "add-auth", "--prompt=do stuff", "--agent=claude", "--force"])
+        assert args.slug == "add-auth"
+        assert args.prompt == "do stuff"
+        assert args.agent == "claude"
+        assert args.force is True
 
-    def test_multiple_flags(self) -> None:
-        positional, flags = parse_flags(["slug", "--agent=claude", "--prompt=add auth"])
-        assert positional == ["slug"]
-        assert flags == {"agent": "claude", "prompt": "add auth"}
+    def test_create_missing_slug_exits(self) -> None:
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["create"])
 
-    def test_flag_without_value(self) -> None:
-        assert parse_flags(["--verbose"]) == ([], {"verbose": None})
+    def test_approve_defaults(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["approve"])
+        assert args.command == "approve"
+        assert args.agent is None
+        assert args.force is False
 
-    def test_no_args(self) -> None:
-        assert parse_flags([]) == ([], {})
+    def test_approve_with_flags(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["approve", "--agent=reviewer", "--force"])
+        assert args.agent == "reviewer"
+        assert args.force is True
+
+    def test_start(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["start"])
+        assert args.command == "start"
+
+    def test_done(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["done"])
+        assert args.command == "done"
+
+    def test_session_check(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["session-check"])
+        assert args.command == "session-check"
+
+    def test_no_command_exits(self) -> None:
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args([])
+
+    def test_unknown_command_exits(self) -> None:
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["bogus"])
 
 
 # ── cmd_create ───────────────────────────────────────────────────────────────
@@ -459,6 +502,24 @@ class TestCmdCreate:
     def test_invalid_slug_exits(self, tmp_path: Path) -> None:
         with pytest.raises(SystemExit):
             cmd_create("INVALID", cwd=str(tmp_path), now=FIXED_NOW)
+
+    def test_fails_if_draft_exists(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            cmd_create("other-plan", cwd=str(tmp_path), now=FIXED_NOW)
+        err = capsys.readouterr().err
+        assert "A draft already exists: Add Auth" in err
+        assert "--force" in err
+
+    def test_force_overwrites_existing_draft(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        second_now = datetime(2026, 2, 25, 10, 0)
+        cmd_create("other-plan", force=True, cwd=str(tmp_path), now=second_now)
+        plans = plans_dir_for(str(tmp_path))
+        current = read_current_draft(plans)
+        assert current["slug"] == "other-plan"
+        assert current["title"] == "Other Plan"
 
 
 # ── cmd_approve ──────────────────────────────────────────────────────────────
@@ -570,6 +631,48 @@ class TestCmdApprove:
         cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
         plans = tmp_path / ".claude" / "plans"
         assert read_current_draft(plans) is None
+
+    def test_fails_if_plan_already_active(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        self._create_draft(tmp_path)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        # Create a second draft and try to approve it
+        cmd_create("other-plan", force=True, cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        err = capsys.readouterr().err
+        assert "A plan is already active: Add Auth" in err
+        assert "status: approved" in err
+        assert "--force" in err
+
+    def test_fails_if_plan_in_progress(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        self._create_draft(tmp_path)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_start(cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        cmd_create("other-plan", force=True, cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        err = capsys.readouterr().err
+        assert "A plan is already active: Add Auth" in err
+        assert "status: in_progress" in err
+
+    def test_force_overwrites_active_plan(self, tmp_path: Path) -> None:
+        self._create_draft(tmp_path)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_create("other-plan", force=True, cwd=str(tmp_path), now=FIXED_NOW)
+        approve_now = datetime(2026, 2, 25, 10, 0)
+        cmd_approve(force=True, cwd=str(tmp_path), now=approve_now)
+        plans = tmp_path / ".claude" / "plans"
+        current = read_current_plan(plans)
+        assert current["slug"] == "other-plan"
+        assert current["status"] == "approved"
 
 
 # ── cmd_start ────────────────────────────────────────────────────────────────
@@ -760,10 +863,14 @@ class TestCmdSessionCheck:
         expected = "\n".join([
             "A plan is in progress: **Add Auth**.",
             "",
-            f"- Plan: `{plan_file}` (check checkboxes for progress)",
+            f"- Plan: `{plan_file}`",
             f"- Appendix: `{appendix_file}`",
             "",
             "Continue from where it left off.",
+            "Check off each item as you complete it:",
+            "  - `## [ ]` → `## [x]` for phase headings",
+            "  - `### [ ]` → `### [x]` for step headings",
+            "  - `- [ ]` → `- [x]` for bullet items",
             f"Run `python3 {self._script_path()} done` when all tasks are complete.",
         ])
         assert result == {"hookSpecificOutput": {"additionalContext": expected}}

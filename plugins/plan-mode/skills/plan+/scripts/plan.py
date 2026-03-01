@@ -9,6 +9,7 @@ Subcommands:
   session-check           Hook: check for active plan on session start
 """
 
+import argparse
 import getpass
 import json
 import re
@@ -191,6 +192,7 @@ def cmd_create(
     *,
     prompt: str | None = None,
     agent: str | None = None,
+    force: bool = False,
     cwd: str | None = None,
     now: datetime | None = None,
 ) -> None:
@@ -203,6 +205,16 @@ def cmd_create(
         now = datetime.now()
 
     plans = plans_dir_for(cwd)
+
+    existing_draft = read_current_draft(plans)
+    if existing_draft is not None and not force:
+        print(
+            f"Error: A draft already exists: {existing_draft['title']}\n"
+            f"  File: {existing_draft['plan_file']}\n"
+            "Use --force to overwrite.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     drafts = plans / "drafts"
     drafts.mkdir(parents=True, exist_ok=True)
 
@@ -239,6 +251,7 @@ def cmd_create(
 def cmd_approve(
     *,
     agent: str | None = None,
+    force: bool = False,
     cwd: str | None = None,
     now: datetime | None = None,
 ) -> None:
@@ -249,6 +262,18 @@ def cmd_approve(
         now = datetime.now()
 
     plans = plans_dir_for(cwd)
+
+    existing_plan = read_current_plan(plans)
+    if existing_plan is not None and not force:
+        print(
+            f"Error: A plan is already active: {existing_plan['title']} "
+            f"(status: {existing_plan['status']})\n"
+            f"  File: {existing_plan['plan_file']}\n"
+            "Use --force to overwrite.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     current_draft = read_current_draft(plans)
     if current_draft is None:
         print("Error: No current draft found. Run `plan create` first.", file=sys.stderr)
@@ -395,13 +420,17 @@ def cmd_session_check(hook_input: dict) -> None:
         lines = [
             f"A plan is in progress: **{title}**.",
             "",
-            f"- Plan: `{plan_file}` (check checkboxes for progress)",
+            f"- Plan: `{plan_file}`",
         ]
         if appendix_file:
             lines.append(f"- Appendix: `{appendix_file}`")
         lines += [
             "",
             "Continue from where it left off.",
+            "Check off each item as you complete it:",
+            "  - `## [ ]` → `## [x]` for phase headings",
+            "  - `### [ ]` → `### [x]` for step headings",
+            "  - `- [ ]` → `- [x]` for bullet items",
             f"Run `python3 {script} done` when all tasks are complete.",
         ]
         message = "\n".join(lines)
@@ -415,55 +444,52 @@ def cmd_session_check(hook_input: dict) -> None:
 # ── CLI entry point ──────────────────────────────────────────────────────────
 
 
-def parse_flags(args: list[str]) -> tuple[list[str], dict[str, str | None]]:
-    """Separate positional args from --key=value flags."""
-    positional = []
-    flags: dict[str, str | None] = {}
-    for arg in args:
-        if arg.startswith("--"):
-            if "=" in arg:
-                key, value = arg[2:].split("=", 1)
-                flags[key] = value
-            else:
-                flags[arg[2:]] = None
-        else:
-            positional.append(arg)
-    return positional, flags
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser."""
+    parser = argparse.ArgumentParser(prog="plan", description="Plan management CLI")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    create = subparsers.add_parser("create", help="Create a new draft plan")
+    create.add_argument("slug", help="Plan slug (e.g. add-auth)")
+    create.add_argument("--prompt", help="Original user prompt")
+    create.add_argument("--agent", help="Agent identity")
+    create.add_argument("--force", action="store_true", help="Overwrite existing draft")
+
+    approve = subparsers.add_parser("approve", help="Approve the current draft plan")
+    approve.add_argument("--agent", help="Agent identity")
+    approve.add_argument("--force", action="store_true", help="Overwrite existing active plan")
+
+    subparsers.add_parser("start", help="Start implementing the current plan")
+    subparsers.add_parser("done", help="Mark the current plan as done")
+    subparsers.add_parser("session-check", help="Hook: check for active plan on session start")
+
+    return parser
 
 
 def main(args: list[str] | None = None) -> None:
-    if args is None:
-        args = sys.argv[1:]
+    parser = build_parser()
+    parsed = parser.parse_args(args)
 
-    if not args:
-        print("Usage: plan <create|approve|start|done|session-check> [args]", file=sys.stderr)
-        sys.exit(1)
+    if parsed.command == "create":
+        cmd_create(
+            parsed.slug,
+            prompt=parsed.prompt,
+            agent=parsed.agent,
+            force=parsed.force,
+        )
 
-    command = args[0]
-    positional, flags = parse_flags(args[1:])
+    elif parsed.command == "approve":
+        cmd_approve(agent=parsed.agent, force=parsed.force)
 
-    if command == "create":
-        if not positional:
-            print("Usage: plan create <slug> [--prompt=...] [--agent=...]", file=sys.stderr)
-            sys.exit(1)
-        cmd_create(positional[0], prompt=flags.get("prompt"), agent=flags.get("agent"))
-
-    elif command == "approve":
-        cmd_approve(agent=flags.get("agent"))
-
-    elif command == "start":
+    elif parsed.command == "start":
         cmd_start()
 
-    elif command == "done":
+    elif parsed.command == "done":
         cmd_done()
 
-    elif command == "session-check":
+    elif parsed.command == "session-check":
         hook_input = json.loads(sys.stdin.read())
         cmd_session_check(hook_input)
-
-    else:
-        print(f"Unknown command: {command}", file=sys.stderr)
-        sys.exit(1)
 
 
 if __name__ == "__main__":
