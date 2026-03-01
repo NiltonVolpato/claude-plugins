@@ -437,7 +437,10 @@ def cmd_session_check(hook_input: dict) -> None:
     else:
         return
 
-    output = {"hookSpecificOutput": {"additionalContext": message}}
+    output = {"hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": message,
+    }}
     print(json.dumps(output))
 
 
