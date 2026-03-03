@@ -2,6 +2,7 @@
 """Tests for the plan management CLI."""
 
 import json
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -9,11 +10,14 @@ import pytest
 
 from plan import (
     APPENDIX_TEMPLATE,
+    DB_FILENAME,
     PLAN_TEMPLATE,
     append_log_entry,
+    build_parser,
     cmd_approve,
     cmd_create,
     cmd_done,
+    cmd_list,
     cmd_session_check,
     cmd_start,
     extract_slug_from_draft,
@@ -22,15 +26,15 @@ from plan import (
     find_latest_draft,
     find_unchecked_items,
     format_log_entry,
+    get_current_draft,
+    get_current_plan,
     get_identity,
-    build_parser,
-    read_current_draft,
-    remove_current_draft,
+    list_pending_plans,
+    open_db,
     plans_dir_for,
-    read_current_plan,
+    record_session,
     slug_to_title,
     validate_slug,
-    write_current_plan,
 )
 
 FIXED_NOW = datetime(2026, 2, 24, 4, 48)
@@ -186,57 +190,195 @@ class TestFindLatestDraft:
         assert find_latest_draft(tmp_path) is None
 
 
-# ── current-draft.json ───────────────────────────────────────────────────────
+# ── open_db ──────────────────────────────────────────────────────────────────
 
 
-class TestCurrentDraft:
-    def test_create_writes_current_draft(self, tmp_path: Path) -> None:
-        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+class TestOpenDb:
+    def test_creates_db_file(self, tmp_path: Path) -> None:
         plans = tmp_path / ".claude" / "plans"
-        draft = read_current_draft(plans)
+        open_db(plans)
+        assert (plans / DB_FILENAME).exists()
+
+    def test_creates_tables(self, tmp_path: Path) -> None:
+        plans = tmp_path / ".claude" / "plans"
+        conn = open_db(plans)
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "plans" in tables
+        assert "plan_sessions" in tables
+
+    def test_idempotent(self, tmp_path: Path) -> None:
+        plans = tmp_path / ".claude" / "plans"
+        conn1 = open_db(plans)
+        conn1.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'draft', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn1.commit()
+        conn1.close()
+        # Opening again should not lose data
+        conn2 = open_db(plans)
+        row = conn2.execute("SELECT slug FROM plans").fetchone()
+        assert row["slug"] == "test"
+
+    def test_creates_parent_directories(self, tmp_path: Path) -> None:
+        plans = tmp_path / "deep" / "nested" / ".claude" / "plans"
+        open_db(plans)
+        assert (plans / DB_FILENAME).exists()
+
+
+# ── get_current_draft / get_current_plan / list_pending_plans ────────────────
+
+
+class TestDbQueries:
+    def test_get_current_draft_none(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        assert get_current_draft(conn) is None
+
+    def test_get_current_draft_returns_draft(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'draft', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        draft = get_current_draft(conn)
         assert draft is not None
-        assert draft["slug"] == "add-auth"
-        assert draft["title"] == "Add Auth"
-        assert "add-auth.md" in draft["plan_file"]
-        assert "add-auth-appendix.md" in draft["appendix_file"]
+        assert draft["slug"] == "test"
+        assert draft["status"] == "draft"
 
-    def test_approve_removes_current_draft(self, tmp_path: Path) -> None:
-        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
-        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
-        plans = tmp_path / ".claude" / "plans"
-        assert read_current_draft(plans) is None
+    def test_get_current_draft_ignores_non_draft(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'approved', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        assert get_current_draft(conn) is None
 
-    def test_approve_no_slug_reads_current_draft(self, tmp_path: Path) -> None:
-        cmd_create("my-feature", cwd=str(tmp_path), now=FIXED_NOW)
-        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
-        plans = tmp_path / ".claude" / "plans"
-        current = read_current_plan(plans)
-        assert current["slug"] == "my-feature"
+    def test_get_current_plan_none(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        assert get_current_plan(conn) is None
 
-    def test_remove_current_draft_noop_when_missing(self, tmp_path: Path) -> None:
-        remove_current_draft(tmp_path)  # should not raise
+    def test_get_current_plan_returns_approved(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'approved', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        plan = get_current_plan(conn)
+        assert plan is not None
+        assert plan["status"] == "approved"
+
+    def test_get_current_plan_returns_in_progress(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'in_progress', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        plan = get_current_plan(conn)
+        assert plan is not None
+        assert plan["status"] == "in_progress"
+
+    def test_get_current_plan_ignores_done(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'done', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        assert get_current_plan(conn) is None
+
+    def test_get_current_plan_ignores_draft(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'draft', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        assert get_current_plan(conn) is None
+
+    def test_list_pending_plans_empty(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        assert list_pending_plans(conn) == []
+
+    def test_list_pending_plans_excludes_done(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'done', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        assert list_pending_plans(conn) == []
+
+    def test_list_pending_plans_includes_all_non_done(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        for status in ("draft", "approved", "in_progress"):
+            conn.execute(
+                "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+                "VALUES (?, ?, ?, '/tmp/test.md', '2026-01-01T00:00:00')",
+                (f"test-{status}", f"Test {status}", status),
+            )
+        conn.commit()
+        pending = list_pending_plans(conn)
+        assert len(pending) == 3
+        assert [p["status"] for p in pending] == ["draft", "approved", "in_progress"]
 
 
-# ── read_current_plan / write_current_plan ───────────────────────────────────
+# ── record_session ───────────────────────────────────────────────────────────
 
 
-class TestCurrentPlan:
-    def test_read_returns_none_when_missing(self, tmp_path: Path) -> None:
-        assert read_current_plan(tmp_path) is None
+class TestRecordSession:
+    def test_inserts_new_session(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'draft', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        record_session(conn, 1, "session-abc", FIXED_NOW)
+        conn.commit()
+        row = conn.execute("SELECT * FROM plan_sessions WHERE plan_id = 1").fetchone()
+        assert row["session_id"] == "session-abc"
+        assert row["first_seen_at"] == "2026-02-24T04:48:00"
+        assert row["last_seen_at"] == "2026-02-24T04:48:00"
 
-    def test_roundtrip(self, tmp_path: Path) -> None:
-        data = {"slug": "test", "status": "approved"}
-        write_current_plan(tmp_path, data)
-        assert read_current_plan(tmp_path) == data
+    def test_updates_last_seen(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'draft', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        record_session(conn, 1, "session-abc", FIXED_NOW)
+        conn.commit()
+        later = datetime(2026, 2, 25, 10, 0)
+        record_session(conn, 1, "session-abc", later)
+        conn.commit()
+        row = conn.execute("SELECT * FROM plan_sessions WHERE plan_id = 1").fetchone()
+        assert row["first_seen_at"] == "2026-02-24T04:48:00"
+        assert row["last_seen_at"] == "2026-02-25T10:00:00"
 
-    def test_write_creates_file(self, tmp_path: Path) -> None:
-        write_current_plan(tmp_path, {"slug": "test"})
-        assert (tmp_path / "current-plan.json").exists()
-
-    def test_write_overwrites(self, tmp_path: Path) -> None:
-        write_current_plan(tmp_path, {"slug": "old"})
-        write_current_plan(tmp_path, {"slug": "new"})
-        assert read_current_plan(tmp_path)["slug"] == "new"
+    def test_multiple_sessions(self, tmp_path: Path) -> None:
+        conn = open_db(tmp_path)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('test', 'Test', 'draft', '/tmp/test.md', '2026-01-01T00:00:00')"
+        )
+        conn.commit()
+        record_session(conn, 1, "session-abc", FIXED_NOW)
+        record_session(conn, 1, "session-def", FIXED_NOW)
+        conn.commit()
+        rows = conn.execute("SELECT * FROM plan_sessions WHERE plan_id = 1").fetchall()
+        assert len(rows) == 2
+        session_ids = {row["session_id"] for row in rows}
+        assert session_ids == {"session-abc", "session-def"}
 
 
 # ── find_unchecked_items ─────────────────────────────────────────────────────
@@ -492,6 +634,11 @@ class TestBuildParser:
         args = parser.parse_args(["done"])
         assert args.command == "done"
 
+    def test_list(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["list"])
+        assert args.command == "list"
+
     def test_session_check(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["session-check"])
@@ -584,6 +731,18 @@ class TestCmdCreate:
         with pytest.raises(SystemExit):
             cmd_create("INVALID", cwd=str(tmp_path), now=FIXED_NOW)
 
+    def test_inserts_into_database(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        draft = get_current_draft(conn)
+        assert draft is not None
+        assert draft["slug"] == "add-auth"
+        assert draft["title"] == "Add Auth"
+        assert draft["status"] == "draft"
+        assert "add-auth.md" in draft["plan_file"]
+        assert "add-auth-appendix.md" in draft["appendix_file"]
+
     def test_fails_if_draft_exists(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
         capsys.readouterr()
@@ -598,9 +757,32 @@ class TestCmdCreate:
         second_now = datetime(2026, 2, 25, 10, 0)
         cmd_create("other-plan", force=True, cwd=str(tmp_path), now=second_now)
         plans = plans_dir_for(str(tmp_path))
-        current = read_current_draft(plans)
-        assert current["slug"] == "other-plan"
-        assert current["title"] == "Other Plan"
+        conn = open_db(plans)
+        draft = get_current_draft(conn)
+        assert draft["slug"] == "other-plan"
+        assert draft["title"] == "Other Plan"
+
+    def test_force_archives_old_draft(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        second_now = datetime(2026, 2, 25, 10, 0)
+        cmd_create("other-plan", force=True, cwd=str(tmp_path), now=second_now)
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        # Old draft is archived as done
+        rows = conn.execute("SELECT * FROM plans WHERE slug = 'add-auth'").fetchall()
+        assert len(rows) == 1
+        assert rows[0]["status"] == "done"
+
+    def test_creates_db_file(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        plans = plans_dir_for(str(tmp_path))
+        assert (plans / DB_FILENAME).exists()
+
+    def test_no_json_files_created(self, tmp_path: Path) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        plans = plans_dir_for(str(tmp_path))
+        assert not (plans / "current-draft.json").exists()
+        assert not (plans / "current-plan.json").exists()
 
 
 # ── cmd_approve ──────────────────────────────────────────────────────────────
@@ -629,26 +811,32 @@ class TestCmdApprove:
         assert not (drafts / f"{FIXED_NOW_STR}_add-auth.md").exists()
         assert not (drafts / f"{FIXED_NOW_STR}_add-auth-appendix.md").exists()
 
-    def test_creates_current_plan_json(self, tmp_path: Path) -> None:
+    def test_updates_database_status(self, tmp_path: Path) -> None:
         self._create_draft(tmp_path)
         cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
-        plans = tmp_path / ".claude" / "plans"
-        current = json.loads((plans / "current-plan.json").read_text())
-        assert current == {
-            "slug": "add-auth",
-            "title": "Add Auth",
-            "plan_file": str(
-                plans / "approved" / f"{FIXED_NOW_STR}_add-auth.md"
-            ),
-            "appendix_file": str(
-                plans / "approved" / f"{FIXED_NOW_STR}_add-auth-appendix.md"
-            ),
-            "approved_at": "2026-02-24T04:48:00",
-            "status": "approved",
-        }
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        plan = get_current_plan(conn)
+        assert plan is not None
+        assert plan["slug"] == "add-auth"
+        assert plan["status"] == "approved"
+        assert plan["approved_at"] == "2026-02-24T04:48:00"
+        # No more draft
+        assert get_current_draft(conn) is None
+
+    def test_updates_plan_file_path(self, tmp_path: Path) -> None:
+        self._create_draft(tmp_path)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        plan = get_current_plan(conn)
+        assert "approved" in plan["plan_file"]
+        assert "approved" in plan["appendix_file"]
 
     def test_no_current_draft_exits(self, tmp_path: Path) -> None:
-        (tmp_path / ".claude" / "plans").mkdir(parents=True)
+        # Create the plans directory and database but no draft
+        plans = plans_dir_for(str(tmp_path))
+        open_db(plans)
         with pytest.raises(SystemExit):
             cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
 
@@ -702,16 +890,11 @@ class TestCmdApprove:
     def test_reads_from_current_draft(self, tmp_path: Path) -> None:
         self._create_draft(tmp_path, "my-feature")
         cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
-        plans = tmp_path / ".claude" / "plans"
-        current = read_current_plan(plans)
-        assert current["slug"] == "my-feature"
-        assert current["status"] == "approved"
-
-    def test_removes_current_draft_json(self, tmp_path: Path) -> None:
-        self._create_draft(tmp_path)
-        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
-        plans = tmp_path / ".claude" / "plans"
-        assert read_current_draft(plans) is None
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        plan = get_current_plan(conn)
+        assert plan["slug"] == "my-feature"
+        assert plan["status"] == "approved"
 
     def test_fails_if_plan_already_active(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -750,10 +933,18 @@ class TestCmdApprove:
         cmd_create("other-plan", force=True, cwd=str(tmp_path), now=FIXED_NOW)
         approve_now = datetime(2026, 2, 25, 10, 0)
         cmd_approve(force=True, cwd=str(tmp_path), now=approve_now)
-        plans = tmp_path / ".claude" / "plans"
-        current = read_current_plan(plans)
-        assert current["slug"] == "other-plan"
-        assert current["status"] == "approved"
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        plan = get_current_plan(conn)
+        assert plan["slug"] == "other-plan"
+        assert plan["status"] == "approved"
+
+    def test_no_json_files_created(self, tmp_path: Path) -> None:
+        self._create_draft(tmp_path)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        plans = plans_dir_for(str(tmp_path))
+        assert not (plans / "current-draft.json").exists()
+        assert not (plans / "current-plan.json").exists()
 
 
 # ── cmd_start ────────────────────────────────────────────────────────────────
@@ -768,13 +959,15 @@ class TestCmdStart:
         self._setup_approved(tmp_path)
         start_now = datetime(2026, 2, 24, 5, 0)
         cmd_start(cwd=str(tmp_path), now=start_now)
-        plans = tmp_path / ".claude" / "plans"
-        current = read_current_plan(plans)
-        assert current["status"] == "in_progress"
-        assert current["started_at"] == "2026-02-24T05:00:00"
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        plan = get_current_plan(conn)
+        assert plan["status"] == "in_progress"
+        assert plan["started_at"] == "2026-02-24T05:00:00"
 
     def test_no_plan_exits(self, tmp_path: Path) -> None:
-        (tmp_path / ".claude" / "plans").mkdir(parents=True)
+        plans = plans_dir_for(str(tmp_path))
+        open_db(plans)
         with pytest.raises(SystemExit):
             cmd_start(cwd=str(tmp_path))
 
@@ -826,11 +1019,18 @@ class TestCmdDone:
         out = capsys.readouterr().out
         assert "Plan completed: Add Auth" in out
 
-    def test_removes_current_plan_json(self, tmp_path: Path) -> None:
+    def test_updates_database_to_done(self, tmp_path: Path) -> None:
         self._setup_in_progress(tmp_path, "# Plan\n\n- [x] Done\n")
-        cmd_done(cwd=str(tmp_path))
-        plans = tmp_path / ".claude" / "plans"
-        assert not (plans / "current-plan.json").exists()
+        done_now = datetime(2026, 2, 25, 10, 0)
+        cmd_done(cwd=str(tmp_path), now=done_now)
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        # No active plan
+        assert get_current_plan(conn) is None
+        # But plan exists as done in database
+        row = conn.execute("SELECT * FROM plans WHERE slug = 'add-auth' AND status = 'done'").fetchone()
+        assert row is not None
+        assert row["completed_at"] == "2026-02-25T10:00:00"
 
     def test_unchecked_items_exits(self, tmp_path: Path) -> None:
         self._setup_in_progress(
@@ -853,24 +1053,124 @@ class TestCmdDone:
         assert "Task B" in err
 
     def test_no_plan_exits(self, tmp_path: Path) -> None:
-        (tmp_path / ".claude" / "plans").mkdir(parents=True)
+        plans = plans_dir_for(str(tmp_path))
+        open_db(plans)
         with pytest.raises(SystemExit):
             cmd_done(cwd=str(tmp_path))
 
     def test_missing_plan_file_exits(self, tmp_path: Path) -> None:
-        plans = tmp_path / ".claude" / "plans"
-        plans.mkdir(parents=True)
-        write_current_plan(
-            plans,
-            {
-                "slug": "gone",
-                "title": "Gone",
-                "plan_file": str(tmp_path / "nonexistent.md"),
-                "status": "in_progress",
-            },
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        conn.execute(
+            "INSERT INTO plans (slug, title, status, plan_file, created_at) "
+            "VALUES ('gone', 'Gone', 'in_progress', ?, '2026-01-01T00:00:00')",
+            (str(tmp_path / "nonexistent.md"),),
         )
+        conn.commit()
         with pytest.raises(SystemExit):
             cmd_done(cwd=str(tmp_path))
+
+    def test_no_json_files_after_done(self, tmp_path: Path) -> None:
+        self._setup_in_progress(tmp_path, "# Plan\n\n- [x] Done\n")
+        cmd_done(cwd=str(tmp_path))
+        plans = plans_dir_for(str(tmp_path))
+        assert not (plans / "current-plan.json").exists()
+        assert not (plans / "current-draft.json").exists()
+
+
+# ── cmd_list ─────────────────────────────────────────────────────────────────
+
+
+class TestCmdList:
+    def _script_path(self) -> str:
+        return str(
+            Path(__file__).resolve().parent.parent
+            / "plugins" / "plan-mode" / "skills" / "plan+" / "scripts" / "plan.py"
+        )
+
+    def test_no_plans_message(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        # Create the database but no plans
+        plans = plans_dir_for(str(tmp_path))
+        open_db(plans)
+        cmd_list(cwd=str(tmp_path))
+        out = capsys.readouterr().out
+        assert out == "No pending plans.\n"
+
+    def test_draft_only(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()  # clear create output
+        cmd_list(cwd=str(tmp_path))
+        out = capsys.readouterr().out
+        assert "Draft plans (finish writing, then approve):" in out
+        assert "Add Auth" in out
+        assert "add-auth.md" in out
+        assert "add-auth-appendix.md" in out
+        assert f"python3 {self._script_path()} approve" in out
+
+    def test_approved_only(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        cmd_list(cwd=str(tmp_path))
+        out = capsys.readouterr().out
+        assert "Approved plans (ready to start):" in out
+        assert "Add Auth" in out
+        assert f"python3 {self._script_path()} start" in out
+
+    def test_in_progress_only(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_start(cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        cmd_list(cwd=str(tmp_path))
+        out = capsys.readouterr().out
+        assert "Plans in progress (resume working):" in out
+        assert "Add Auth" in out
+        assert "## [ ]" in out
+        assert "### [ ]" in out
+        assert f"python3 {self._script_path()} done" in out
+
+    def test_multiple_statuses(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        # Create a draft
+        cmd_create("draft-plan", cwd=str(tmp_path), now=FIXED_NOW)
+        # Create and start another plan (force to override existing draft)
+        second_now = datetime(2026, 2, 25, 10, 0)
+        cmd_create("active-plan", force=True, cwd=str(tmp_path), now=second_now)
+        cmd_approve(cwd=str(tmp_path), now=second_now)
+        cmd_start(cwd=str(tmp_path), now=second_now)
+        capsys.readouterr()
+        cmd_list(cwd=str(tmp_path))
+        out = capsys.readouterr().out
+        # The first draft was archived (force), so only in_progress shows
+        assert "Plans in progress (resume working):" in out
+        assert "Active Plan" in out
+
+    def test_done_not_shown(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        # Write all-checked plan
+        draft = (
+            tmp_path / ".claude" / "plans" / "drafts" / f"{FIXED_NOW_STR}_add-auth.md"
+        )
+        draft.write_text("# Plan\n\n- [x] Done\n")
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_start(cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_done(cwd=str(tmp_path))
+        capsys.readouterr()
+        cmd_list(cwd=str(tmp_path))
+        out = capsys.readouterr().out
+        assert out == "No pending plans.\n"
 
 
 # ── cmd_session_check ────────────────────────────────────────────────────────
@@ -891,9 +1191,6 @@ class TestCmdSessionCheck:
             / "plugins" / "plan-mode" / "skills" / "plan+" / "scripts" / "plan.py"
         )
 
-    def _approved_dir(self, tmp_path: Path) -> Path:
-        return tmp_path / ".claude" / "plans" / "approved"
-
     def test_no_plan_outputs_nothing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
@@ -908,59 +1205,135 @@ class TestCmdSessionCheck:
         cmd_session_check({"cwd": ""})
         assert capsys.readouterr().out == ""
 
-    def test_approved_plan_message(
+    def test_draft_plan_shows_pending(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
-        self._setup_approved(tmp_path)
-        capsys.readouterr()  # clear setup output
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
         cmd_session_check({"cwd": str(tmp_path)})
         out = capsys.readouterr().out
         result = json.loads(out)
-        approved = self._approved_dir(tmp_path)
-        plan_file = approved / f"{FIXED_NOW_STR}_add-auth.md"
-        appendix_file = approved / f"{FIXED_NOW_STR}_add-auth-appendix.md"
-        expected = "\n".join([
-            "A plan has been approved but not started: **Add Auth**.",
-            "",
-            f"- Plan: `{plan_file}`",
-            f"- Appendix: `{appendix_file}`",
-            "",
-            "Ask the user if they want to start implementing.",
-            f"Run `python3 {self._script_path()} start` when ready.",
-        ])
+        expected = (
+            "There are 1 pending plan. "
+            "Ask the user if they are relevant.\n"
+            f"Check pending plans with: `python3 {self._script_path()} list`"
+        )
         assert result == {"hookSpecificOutput": {
             "hookEventName": "SessionStart",
             "additionalContext": expected,
         }}
 
-    def test_in_progress_plan_message(
+    def test_approved_plan_shows_pending(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
-        self._setup_in_progress(tmp_path)
-        capsys.readouterr()  # clear setup output
+        self._setup_approved(tmp_path)
+        capsys.readouterr()
         cmd_session_check({"cwd": str(tmp_path)})
         out = capsys.readouterr().out
         result = json.loads(out)
-        approved = self._approved_dir(tmp_path)
-        plan_file = approved / f"{FIXED_NOW_STR}_add-auth.md"
-        appendix_file = approved / f"{FIXED_NOW_STR}_add-auth-appendix.md"
-        expected = "\n".join([
-            "A plan is in progress: **Add Auth**.",
-            "",
-            f"- Plan: `{plan_file}`",
-            f"- Appendix: `{appendix_file}`",
-            "",
-            "Continue from where it left off.",
-            "Check off each item as you complete it:",
-            "  - `## [ ]` → `## [x]` for phase headings",
-            "  - `### [ ]` → `### [x]` for step headings",
-            "  - `- [ ]` → `- [x]` for bullet items",
-            f"Run `python3 {self._script_path()} done` when all tasks are complete.",
-        ])
-        assert result == {"hookSpecificOutput": {
-            "hookEventName": "SessionStart",
-            "additionalContext": expected,
-        }}
+        context = result["hookSpecificOutput"]["additionalContext"]
+        assert "1 pending plan" in context
+        assert "list`" in context
+
+    def test_in_progress_plan_shows_pending(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        self._setup_in_progress(tmp_path)
+        capsys.readouterr()
+        cmd_session_check({"cwd": str(tmp_path)})
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        context = result["hookSpecificOutput"]["additionalContext"]
+        assert "1 pending plan" in context
+
+    def test_done_plan_no_message(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        draft = (
+            tmp_path / ".claude" / "plans" / "drafts" / f"{FIXED_NOW_STR}_add-auth.md"
+        )
+        draft.write_text("# Plan\n\n- [x] Done\n")
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_start(cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_done(cwd=str(tmp_path))
+        capsys.readouterr()
+        cmd_session_check({"cwd": str(tmp_path)})
+        assert capsys.readouterr().out == ""
+
+    def test_multiple_plans_shows_count(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        # Create a draft, approve it, then create another draft
+        cmd_create("first-plan", cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_approve(cwd=str(tmp_path), now=FIXED_NOW)
+        cmd_start(cwd=str(tmp_path), now=FIXED_NOW)
+        second_now = datetime(2026, 2, 25, 10, 0)
+        cmd_create("second-plan", cwd=str(tmp_path), now=second_now)
+        capsys.readouterr()
+        cmd_session_check({"cwd": str(tmp_path)})
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        context = result["hookSpecificOutput"]["additionalContext"]
+        assert "2 pending plans" in context
+
+
+# ── Session tracking in session-check ────────────────────────────────────────
+
+
+class TestSessionTracking:
+    def test_session_check_records_session(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        cmd_session_check({"cwd": str(tmp_path), "session_id": "ses-abc123"})
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        rows = conn.execute("SELECT * FROM plan_sessions").fetchall()
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "ses-abc123"
+
+    def test_session_check_updates_last_seen(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        cmd_session_check({"cwd": str(tmp_path), "session_id": "ses-abc123"})
+        capsys.readouterr()
+        # Second check with same session
+        cmd_session_check({"cwd": str(tmp_path), "session_id": "ses-abc123"})
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        rows = conn.execute("SELECT * FROM plan_sessions").fetchall()
+        assert len(rows) == 1  # Still one row, not two
+        # last_seen_at should be updated (we can't check exact time since datetime.now() is used)
+
+    def test_multiple_sessions_recorded(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        cmd_session_check({"cwd": str(tmp_path), "session_id": "ses-abc"})
+        capsys.readouterr()
+        cmd_session_check({"cwd": str(tmp_path), "session_id": "ses-def"})
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        rows = conn.execute("SELECT * FROM plan_sessions").fetchall()
+        assert len(rows) == 2
+        session_ids = {row["session_id"] for row in rows}
+        assert session_ids == {"ses-abc", "ses-def"}
+
+    def test_no_session_id_no_record(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_create("add-auth", cwd=str(tmp_path), now=FIXED_NOW)
+        capsys.readouterr()
+        cmd_session_check({"cwd": str(tmp_path)})
+        plans = plans_dir_for(str(tmp_path))
+        conn = open_db(plans)
+        rows = conn.execute("SELECT * FROM plan_sessions").fetchall()
+        assert len(rows) == 0
 
 
 # ── Full lifecycle ───────────────────────────────────────────────────────────
@@ -971,7 +1344,7 @@ class TestLifecycle:
         """Full lifecycle: create → approve → start → done."""
         # Create
         cmd_create("my-feature", cwd=str(tmp_path), now=FIXED_NOW)
-        plans = tmp_path / ".claude" / "plans"
+        plans = plans_dir_for(str(tmp_path))
         drafts = plans / "drafts"
         plan_file = drafts / f"{FIXED_NOW_STR}_my-feature.md"
         assert plan_file.exists()
@@ -982,13 +1355,14 @@ class TestLifecycle:
         # Approve
         approve_now = datetime(2026, 2, 24, 5, 0)
         cmd_approve(cwd=str(tmp_path), now=approve_now)
-        current = read_current_plan(plans)
-        assert current["status"] == "approved"
+        conn = open_db(plans)
+        plan = get_current_plan(conn)
+        assert plan["status"] == "approved"
 
         # Draft files are gone (moved)
         assert not plan_file.exists()
 
-        # Session check shows approved
+        # Session check shows pending
         import io
         import sys
 
@@ -996,17 +1370,19 @@ class TestLifecycle:
         sys.stdout = buf = io.StringIO()
         cmd_session_check({"cwd": str(tmp_path)})
         sys.stdout = old_stdout
-        assert "approved but not started" in buf.getvalue()
+        assert "pending plan" in buf.getvalue()
 
         # Start
         start_now = datetime(2026, 2, 24, 5, 30)
         cmd_start(cwd=str(tmp_path), now=start_now)
-        current = read_current_plan(plans)
-        assert current["status"] == "in_progress"
+        conn = open_db(plans)
+        plan = get_current_plan(conn)
+        assert plan["status"] == "in_progress"
 
         # Done
         cmd_done(cwd=str(tmp_path))
-        assert not (plans / "current-plan.json").exists()
+        conn = open_db(plans)
+        assert get_current_plan(conn) is None
 
     def test_approved_files_preserved_after_done(self, tmp_path: Path) -> None:
         """Approved files remain in approved/ after plan is completed."""

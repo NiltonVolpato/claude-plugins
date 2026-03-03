@@ -6,6 +6,7 @@ Subcommands:
   approve                 Approve the current draft plan
   start                   Start implementing the current plan
   done                    Mark the current plan as done
+  list                    List all pending plans
   session-check           Hook: check for active plan on session start
 """
 
@@ -14,11 +15,14 @@ import getpass
 import json
 import re
 import socket
+import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+DB_FILENAME = "plans.db"
 
 PLAN_TEMPLATE = """\
 # {title}
@@ -37,6 +41,91 @@ APPENDIX_TEMPLATE = """\
 
 ## References
 """
+
+_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('draft', 'approved', 'in_progress', 'done')),
+    plan_file TEXT NOT NULL,
+    appendix_file TEXT,
+    created_at TEXT NOT NULL,
+    approved_at TEXT,
+    started_at TEXT,
+    completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS plan_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id INTEGER NOT NULL REFERENCES plans(id),
+    session_id TEXT NOT NULL,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    UNIQUE(plan_id, session_id)
+);
+"""
+
+
+# ── Database helpers ─────────────────────────────────────────────────────────
+
+
+def open_db(plans_dir: Path) -> sqlite3.Connection:
+    """Open (or create) the plans database, ensuring schema exists."""
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    db_path = plans_dir / DB_FILENAME
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.executescript(_SCHEMA)
+    return conn
+
+
+def _row_to_dict(row: sqlite3.Row | None) -> dict | None:
+    """Convert a sqlite3.Row to a plain dict, or None if row is None."""
+    if row is None:
+        return None
+    return dict(row)
+
+
+def get_current_draft(conn: sqlite3.Connection) -> dict | None:
+    """Get the most recent draft plan, or None."""
+    row = conn.execute(
+        "SELECT * FROM plans WHERE status = 'draft' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return _row_to_dict(row)
+
+
+def get_current_plan(conn: sqlite3.Connection) -> dict | None:
+    """Get the most recent approved or in-progress plan, or None."""
+    row = conn.execute(
+        "SELECT * FROM plans WHERE status IN ('approved', 'in_progress') "
+        "ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return _row_to_dict(row)
+
+
+def list_pending_plans(conn: sqlite3.Connection) -> list[dict]:
+    """List all plans that are not done."""
+    rows = conn.execute(
+        "SELECT * FROM plans WHERE status != 'done' ORDER BY id"
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def record_session(
+    conn: sqlite3.Connection, plan_id: int, session_id: str, now: datetime
+) -> None:
+    """Record a session interaction with a plan (insert or update last_seen)."""
+    timestamp = now.isoformat(timespec="seconds")
+    conn.execute(
+        "INSERT INTO plan_sessions (plan_id, session_id, first_seen_at, last_seen_at) "
+        "VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(plan_id, session_id) DO UPDATE SET last_seen_at = ?",
+        (plan_id, session_id, timestamp, timestamp, timestamp),
+    )
+
+
+# ── Utility functions ────────────────────────────────────────────────────────
 
 
 def get_identity(agent: str | None = None) -> str:
@@ -125,41 +214,6 @@ def find_draft_appendix(drafts_dir: Path, slug: str) -> Path | None:
     return None
 
 
-def read_current_draft(plans_dir: Path) -> dict | None:
-    """Read current-draft.json, returning None if it doesn't exist."""
-    draft_file = plans_dir / "current-draft.json"
-    if not draft_file.exists():
-        return None
-    return json.loads(draft_file.read_text())
-
-
-def write_current_draft(plans_dir: Path, data: dict) -> None:
-    """Write current-draft.json."""
-    draft_file = plans_dir / "current-draft.json"
-    draft_file.write_text(json.dumps(data, indent=2) + "\n")
-
-
-def remove_current_draft(plans_dir: Path) -> None:
-    """Remove current-draft.json if it exists."""
-    draft_file = plans_dir / "current-draft.json"
-    if draft_file.exists():
-        draft_file.unlink()
-
-
-def read_current_plan(plans_dir: Path) -> dict | None:
-    """Read current-plan.json, returning None if it doesn't exist."""
-    current_file = plans_dir / "current-plan.json"
-    if not current_file.exists():
-        return None
-    return json.loads(current_file.read_text())
-
-
-def write_current_plan(plans_dir: Path, data: dict) -> None:
-    """Write current-plan.json."""
-    current_file = plans_dir / "current-plan.json"
-    current_file.write_text(json.dumps(data, indent=2) + "\n")
-
-
 _UNCHECKED_PATTERNS = [
     re.compile(r"#+ \[ \] (.*)"),  # ### [ ] Heading
     re.compile(r"- \[ \] (.*)"),   # - [ ] Bullet
@@ -210,8 +264,9 @@ def cmd_create(
         now = datetime.now()
 
     plans = plans_dir_for(cwd)
+    conn = open_db(plans)
 
-    existing_draft = read_current_draft(plans)
+    existing_draft = get_current_draft(conn)
     if existing_draft is not None and not force:
         print(
             f"Error: A draft already exists: {existing_draft['title']}\n"
@@ -220,6 +275,13 @@ def cmd_create(
             file=sys.stderr,
         )
         sys.exit(1)
+
+    if existing_draft is not None and force:
+        conn.execute(
+            "UPDATE plans SET status = 'done', completed_at = ? WHERE id = ?",
+            (now.isoformat(timespec="seconds"), existing_draft["id"]),
+        )
+
     drafts = plans / "drafts"
     drafts.mkdir(parents=True, exist_ok=True)
 
@@ -238,13 +300,12 @@ def cmd_create(
         action += f' (prompt: "{prompt}")'
     append_log_entry(plan_file, format_log_entry(now, identity, action))
 
-    write_current_draft(plans, {
-        "slug": slug,
-        "title": title,
-        "plan_file": str(plan_file),
-        "appendix_file": str(appendix_file),
-        "created_at": now.isoformat(timespec="seconds"),
-    })
+    conn.execute(
+        "INSERT INTO plans (slug, title, status, plan_file, appendix_file, created_at) "
+        "VALUES (?, ?, 'draft', ?, ?, ?)",
+        (slug, title, str(plan_file), str(appendix_file), now.isoformat(timespec="seconds")),
+    )
+    conn.commit()
 
     print(f"Draft plan created:")
     print(f"  Plan:     {plan_file}")
@@ -267,8 +328,9 @@ def cmd_approve(
         now = datetime.now()
 
     plans = plans_dir_for(cwd)
+    conn = open_db(plans)
 
-    existing_plan = read_current_plan(plans)
+    existing_plan = get_current_plan(conn)
     if existing_plan is not None and not force:
         print(
             f"Error: A plan is already active: {existing_plan['title']} "
@@ -279,7 +341,13 @@ def cmd_approve(
         )
         sys.exit(1)
 
-    current_draft = read_current_draft(plans)
+    if existing_plan is not None and force:
+        conn.execute(
+            "UPDATE plans SET status = 'done', completed_at = ? WHERE id = ?",
+            (now.isoformat(timespec="seconds"), existing_plan["id"]),
+        )
+
+    current_draft = get_current_draft(conn)
     if current_draft is None:
         print("Error: No current draft found. Run `plan create` first.", file=sys.stderr)
         sys.exit(1)
@@ -311,24 +379,22 @@ def cmd_approve(
         approved_appendix = approved_dir / f"{datetime_str}_{slug}-appendix.md"
         appendix_file.rename(approved_appendix)
 
-    current_plan_data = {
-        "slug": slug,
-        "title": title,
-        "plan_file": str(approved_plan),
-        "approved_at": now.isoformat(timespec="seconds"),
-        "status": "approved",
-    }
-    if approved_appendix is not None:
-        current_plan_data["appendix_file"] = str(approved_appendix)
-
-    write_current_plan(plans, current_plan_data)
-    remove_current_draft(plans)
+    conn.execute(
+        "UPDATE plans SET status = 'approved', plan_file = ?, appendix_file = ?, approved_at = ? "
+        "WHERE id = ?",
+        (
+            str(approved_plan),
+            str(approved_appendix) if approved_appendix else None,
+            now.isoformat(timespec="seconds"),
+            current_draft["id"],
+        ),
+    )
+    conn.commit()
 
     print(f"Plan approved: {title}")
     print(f"  Plan:     {approved_plan}")
     if approved_appendix:
         print(f"  Appendix: {approved_appendix}")
-    print(f"  Status:   {plans / 'current-plan.json'}")
 
 
 def cmd_start(cwd: str | None = None, now: datetime | None = None) -> None:
@@ -339,7 +405,8 @@ def cmd_start(cwd: str | None = None, now: datetime | None = None) -> None:
         now = datetime.now()
 
     plans = plans_dir_for(cwd)
-    current = read_current_plan(plans)
+    conn = open_db(plans)
+    current = get_current_plan(conn)
 
     if current is None:
         print("Error: No current plan found. Approve a plan first.", file=sys.stderr)
@@ -348,27 +415,32 @@ def cmd_start(cwd: str | None = None, now: datetime | None = None) -> None:
     if current["status"] == "in_progress":
         print(f"Plan already in progress: {current['title']}")
         print(f"  Plan: {current['plan_file']}")
-        if "appendix_file" in current:
+        if current["appendix_file"]:
             print(f"  Appendix: {current['appendix_file']}")
         return
 
-    current["status"] = "in_progress"
-    current["started_at"] = now.isoformat(timespec="seconds")
-    write_current_plan(plans, current)
+    conn.execute(
+        "UPDATE plans SET status = 'in_progress', started_at = ? WHERE id = ?",
+        (now.isoformat(timespec="seconds"), current["id"]),
+    )
+    conn.commit()
 
     print(f"Started plan: {current['title']}")
     print(f"  Plan: {current['plan_file']}")
-    if "appendix_file" in current:
+    if current["appendix_file"]:
         print(f"  Appendix: {current['appendix_file']}")
 
 
-def cmd_done(cwd: str | None = None) -> None:
+def cmd_done(cwd: str | None = None, now: datetime | None = None) -> None:
     """Mark the current plan as done (if all checkboxes are ticked)."""
     if cwd is None:
         cwd = str(Path.cwd())
+    if now is None:
+        now = datetime.now()
 
     plans = plans_dir_for(cwd)
-    current = read_current_plan(plans)
+    conn = open_db(plans)
+    current = get_current_plan(conn)
 
     if current is None:
         print("Error: No current plan found.", file=sys.stderr)
@@ -386,8 +458,67 @@ def cmd_done(cwd: str | None = None) -> None:
             print(f"  - [ ] {item}", file=sys.stderr)
         sys.exit(1)
 
-    (plans / "current-plan.json").unlink()
+    conn.execute(
+        "UPDATE plans SET status = 'done', completed_at = ? WHERE id = ?",
+        (now.isoformat(timespec="seconds"), current["id"]),
+    )
+    conn.commit()
+
     print(f"Plan completed: {current['title']}")
+
+
+def cmd_list(cwd: str | None = None) -> None:
+    """List all pending plans with actionable instructions."""
+    if cwd is None:
+        cwd = str(Path.cwd())
+
+    plans = plans_dir_for(cwd)
+    conn = open_db(plans)
+    pending = list_pending_plans(conn)
+
+    if not pending:
+        print("No pending plans.")
+        return
+
+    script = Path(__file__).resolve()
+
+    # Group by status, preserving order
+    by_status: dict[str, list[dict]] = {}
+    for plan in pending:
+        by_status.setdefault(plan["status"], []).append(plan)
+
+    first = True
+    for status, plans_in_status in by_status.items():
+        if not first:
+            print()
+        first = False
+
+        if status == "draft":
+            print("Draft plans (finish writing, then approve):")
+            for p in plans_in_status:
+                print(f"  - {p['title']}")
+                print(f"    Plan: {p['plan_file']}")
+                if p["appendix_file"]:
+                    print(f"    Appendix: {p['appendix_file']}")
+            print(f"  Run `python3 {script} approve` when the user approves.")
+
+        elif status == "approved":
+            print("Approved plans (ready to start):")
+            for p in plans_in_status:
+                print(f"  - {p['title']}")
+                print(f"    Plan: {p['plan_file']}")
+            print(f"  Run `python3 {script} start` to begin implementation.")
+
+        elif status == "in_progress":
+            print("Plans in progress (resume working):")
+            for p in plans_in_status:
+                print(f"  - {p['title']}")
+                print(f"    Plan: {p['plan_file']}")
+            print("  Continue from where it left off. Check off items as you complete them:")
+            print("    - `## [ ]` → `## [x]` for phase headings")
+            print("    - `### [ ]` → `### [x]` for step headings")
+            print("    - `- [ ]` → `- [x]` for bullet items")
+            print(f"  Run `python3 {script} done` when all tasks are complete.")
 
 
 def cmd_session_check(hook_input: dict) -> None:
@@ -397,50 +528,27 @@ def cmd_session_check(hook_input: dict) -> None:
         return
 
     plans = plans_dir_for(cwd)
-    current = read_current_plan(plans)
-    if current is None:
+    conn = open_db(plans)
+    pending = list_pending_plans(conn)
+    if not pending:
         return
+
+    # Record session interaction
+    session_id = hook_input.get("session_id", "")
+    if session_id:
+        now = datetime.now()
+        for plan in pending:
+            record_session(conn, plan["id"], session_id, now)
+        conn.commit()
 
     script = Path(__file__).resolve()
-    status = current["status"]
-    title = current["title"]
-    plan_file = current["plan_file"]
-    appendix_file = current.get("appendix_file", "")
-
-    if status == "approved":
-        lines = [
-            f"A plan has been approved but not started: **{title}**.",
-            "",
-            f"- Plan: `{plan_file}`",
-        ]
-        if appendix_file:
-            lines.append(f"- Appendix: `{appendix_file}`")
-        lines += [
-            "",
-            "Ask the user if they want to start implementing.",
-            f"Run `python3 {script} start` when ready.",
-        ]
-        message = "\n".join(lines)
-    elif status == "in_progress":
-        lines = [
-            f"A plan is in progress: **{title}**.",
-            "",
-            f"- Plan: `{plan_file}`",
-        ]
-        if appendix_file:
-            lines.append(f"- Appendix: `{appendix_file}`")
-        lines += [
-            "",
-            "Continue from where it left off.",
-            "Check off each item as you complete it:",
-            "  - `## [ ]` → `## [x]` for phase headings",
-            "  - `### [ ]` → `### [x]` for step headings",
-            "  - `- [ ]` → `- [x]` for bullet items",
-            f"Run `python3 {script} done` when all tasks are complete.",
-        ]
-        message = "\n".join(lines)
-    else:
-        return
+    count = len(pending)
+    noun = "plan" if count == 1 else "plans"
+    message = (
+        f"There are {count} pending {noun}. "
+        "Ask the user if they are relevant.\n"
+        f"Check pending plans with: `python3 {script} list`"
+    )
 
     output = {"hookSpecificOutput": {
         "hookEventName": "SessionStart",
@@ -469,6 +577,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("start", help="Start implementing the current plan")
     subparsers.add_parser("done", help="Mark the current plan as done")
+    subparsers.add_parser("list", help="List all pending plans")
     subparsers.add_parser("session-check", help="Hook: check for active plan on session start")
 
     return parser
@@ -494,6 +603,9 @@ def main(args: list[str] | None = None) -> None:
 
     elif parsed.command == "done":
         cmd_done()
+
+    elif parsed.command == "list":
+        cmd_list()
 
     elif parsed.command == "session-check":
         hook_input = json.loads(sys.stdin.read())
