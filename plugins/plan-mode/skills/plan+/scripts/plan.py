@@ -13,6 +13,7 @@ Subcommands:
 import argparse
 import getpass
 import json
+import os
 import re
 import socket
 import sqlite3
@@ -74,6 +75,17 @@ def open_db(plans_dir: Path) -> sqlite3.Connection:
     """Open (or create) the plans database, ensuring schema exists."""
     plans_dir.mkdir(parents=True, exist_ok=True)
     db_path = plans_dir / DB_FILENAME
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.executescript(_SCHEMA)
+    return conn
+
+
+def open_db_if_exists(plans_dir: Path) -> sqlite3.Connection | None:
+    """Open the plans database only if it already exists. Returns None otherwise."""
+    db_path = plans_dir / DB_FILENAME
+    if not db_path.exists():
+        return None
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
@@ -473,14 +485,15 @@ def cmd_list(cwd: str | None = None) -> None:
         cwd = str(Path.cwd())
 
     plans = plans_dir_for(cwd)
-    conn = open_db(plans)
+    conn = open_db_if_exists(plans)
+    if conn is None:
+        print("No pending plans.")
+        return
     pending = list_pending_plans(conn)
 
     if not pending:
         print("No pending plans.")
         return
-
-    script = Path(__file__).resolve()
 
     # Group by status, preserving order
     by_status: dict[str, list[dict]] = {}
@@ -500,14 +513,14 @@ def cmd_list(cwd: str | None = None) -> None:
                 print(f"    Plan: {p['plan_file']}")
                 if p["appendix_file"]:
                     print(f"    Appendix: {p['appendix_file']}")
-            print(f"  Run `python3 {script} approve` when the user approves.")
+            print("  Run `plan.py approve` when the user approves.")
 
         elif status == "approved":
             print("Approved plans (ready to start):")
             for p in plans_in_status:
                 print(f"  - {p['title']}")
                 print(f"    Plan: {p['plan_file']}")
-            print(f"  Run `python3 {script} start` to begin implementation.")
+            print("  Run `plan.py start` to begin implementation.")
 
         elif status == "in_progress":
             print("Plans in progress (resume working):")
@@ -518,17 +531,31 @@ def cmd_list(cwd: str | None = None) -> None:
             print("    - `## [ ]` → `## [x]` for phase headings")
             print("    - `### [ ]` → `### [x]` for step headings")
             print("    - `- [ ]` → `- [x]` for bullet items")
-            print(f"  Run `python3 {script} done` when all tasks are complete.")
+            print("  Run `plan.py done` when all tasks are complete.")
+
+
+def _export_scripts_to_path() -> None:
+    """Append this script's directory to PATH via CLAUDE_ENV_FILE (if available)."""
+    env_file = os.environ.get("CLAUDE_ENV_FILE")
+    if not env_file:
+        return
+    scripts_dir = Path(__file__).resolve().parent
+    with open(env_file, "a") as f:
+        f.write(f'export PATH="$PATH:{scripts_dir}"\n')
 
 
 def cmd_session_check(hook_input: dict) -> None:
     """Hook: check for active plan on session start."""
+    _export_scripts_to_path()
+
     cwd = hook_input.get("cwd", "")
     if not cwd:
         return
 
     plans = plans_dir_for(cwd)
-    conn = open_db(plans)
+    conn = open_db_if_exists(plans)
+    if conn is None:
+        return
     pending = list_pending_plans(conn)
     if not pending:
         return
@@ -541,13 +568,12 @@ def cmd_session_check(hook_input: dict) -> None:
             record_session(conn, plan["id"], session_id, now)
         conn.commit()
 
-    script = Path(__file__).resolve()
     count = len(pending)
     noun = "plan" if count == 1 else "plans"
     message = (
         f"There are {count} pending {noun}. "
         "Ask the user if they are relevant.\n"
-        f"Check pending plans with: `python3 {script} list`"
+        "Check pending plans with: `plan.py list`"
     )
 
     output = {"hookSpecificOutput": {

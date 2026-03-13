@@ -12,6 +12,7 @@ from plan import (
     APPENDIX_TEMPLATE,
     DB_FILENAME,
     PLAN_TEMPLATE,
+    _export_scripts_to_path,
     append_log_entry,
     build_parser,
     cmd_approve,
@@ -31,6 +32,7 @@ from plan import (
     get_identity,
     list_pending_plans,
     open_db,
+    open_db_if_exists,
     plans_dir_for,
     record_session,
     slug_to_title,
@@ -229,6 +231,33 @@ class TestOpenDb:
         plans = tmp_path / "deep" / "nested" / ".claude" / "plans"
         open_db(plans)
         assert (plans / DB_FILENAME).exists()
+
+
+# ── open_db_if_exists ─────────────────────────────────────────────────────────
+
+
+class TestOpenDbIfExists:
+    def test_returns_none_when_no_db(self, tmp_path: Path) -> None:
+        plans = tmp_path / ".claude" / "plans"
+        assert open_db_if_exists(plans) is None
+
+    def test_returns_none_when_dir_missing(self, tmp_path: Path) -> None:
+        plans = tmp_path / "nonexistent" / ".claude" / "plans"
+        assert open_db_if_exists(plans) is None
+
+    def test_returns_connection_when_db_exists(self, tmp_path: Path) -> None:
+        plans = tmp_path / ".claude" / "plans"
+        open_db(plans)  # create the DB
+        conn = open_db_if_exists(plans)
+        assert conn is not None
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "plans" in tables
+        assert "plan_sessions" in tables
 
 
 # ── get_current_draft / get_current_plan / list_pending_plans ────────────────
@@ -1082,11 +1111,16 @@ class TestCmdDone:
 
 
 class TestCmdList:
-    def _script_path(self) -> str:
-        return str(
-            Path(__file__).resolve().parent.parent
-            / "plugins" / "plan-mode" / "skills" / "plan+" / "scripts" / "plan.py"
-        )
+
+    def test_no_db_shows_no_plans(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        cmd_list(cwd=str(tmp_path))
+        out = capsys.readouterr().out
+        assert out == "No pending plans.\n"
+        # Should NOT create the database
+        plans = plans_dir_for(str(tmp_path))
+        assert not (plans / DB_FILENAME).exists()
 
     def test_no_plans_message(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -1109,7 +1143,7 @@ class TestCmdList:
         assert "Add Auth" in out
         assert "add-auth.md" in out
         assert "add-auth-appendix.md" in out
-        assert f"python3 {self._script_path()} approve" in out
+        assert "plan.py approve" in out
 
     def test_approved_only(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -1121,7 +1155,7 @@ class TestCmdList:
         out = capsys.readouterr().out
         assert "Approved plans (ready to start):" in out
         assert "Add Auth" in out
-        assert f"python3 {self._script_path()} start" in out
+        assert "plan.py start" in out
 
     def test_in_progress_only(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -1136,7 +1170,7 @@ class TestCmdList:
         assert "Add Auth" in out
         assert "## [ ]" in out
         assert "### [ ]" in out
-        assert f"python3 {self._script_path()} done" in out
+        assert "plan.py done" in out
 
     def test_multiple_statuses(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -1185,17 +1219,14 @@ class TestCmdSessionCheck:
         self._setup_approved(tmp_path)
         cmd_start(cwd=str(tmp_path), now=FIXED_NOW)
 
-    def _script_path(self) -> str:
-        return str(
-            Path(__file__).resolve().parent.parent
-            / "plugins" / "plan-mode" / "skills" / "plan+" / "scripts" / "plan.py"
-        )
-
     def test_no_plan_outputs_nothing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
         cmd_session_check({"cwd": str(tmp_path)})
         assert capsys.readouterr().out == ""
+        # Should NOT create the database
+        plans = plans_dir_for(str(tmp_path))
+        assert not (plans / DB_FILENAME).exists()
 
     def test_no_cwd_outputs_nothing(self, capsys: pytest.CaptureFixture) -> None:
         cmd_session_check({})
@@ -1216,7 +1247,7 @@ class TestCmdSessionCheck:
         expected = (
             "There are 1 pending plan. "
             "Ask the user if they are relevant.\n"
-            f"Check pending plans with: `python3 {self._script_path()} list`"
+            "Check pending plans with: `plan.py list`"
         )
         assert result == {"hookSpecificOutput": {
             "hookEventName": "SessionStart",
@@ -1276,6 +1307,51 @@ class TestCmdSessionCheck:
         result = json.loads(out)
         context = result["hookSpecificOutput"]["additionalContext"]
         assert "2 pending plans" in context
+
+
+# ── _export_scripts_to_path ────────────────────────────────────────────────────
+
+
+class TestExportScriptsToPath:
+    def test_appends_path_when_env_file_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_file = tmp_path / "env"
+        env_file.touch()
+        monkeypatch.setenv("CLAUDE_ENV_FILE", str(env_file))
+        _export_scripts_to_path()
+        content = env_file.read_text()
+        scripts_dir = str(Path(__file__).resolve().parent.parent
+            / "plugins" / "plan-mode" / "skills" / "plan+" / "scripts")
+        assert content == f'export PATH="$PATH:{scripts_dir}"\n'
+
+    def test_no_op_when_env_file_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("CLAUDE_ENV_FILE", raising=False)
+        _export_scripts_to_path()  # should not raise
+
+    def test_appends_to_existing_content(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_file = tmp_path / "env"
+        env_file.write_text('export FOO=bar\n')
+        monkeypatch.setenv("CLAUDE_ENV_FILE", str(env_file))
+        _export_scripts_to_path()
+        content = env_file.read_text()
+        assert content.startswith('export FOO=bar\n')
+        assert 'export PATH="$PATH:' in content
+
+    def test_session_check_calls_export(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_file = tmp_path / "env"
+        env_file.touch()
+        monkeypatch.setenv("CLAUDE_ENV_FILE", str(env_file))
+        cmd_session_check({"cwd": str(tmp_path)})
+        content = env_file.read_text()
+        assert 'export PATH="$PATH:' in content
 
 
 # ── Session tracking in session-check ────────────────────────────────────────

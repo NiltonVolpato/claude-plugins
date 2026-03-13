@@ -96,7 +96,7 @@ Don't make tasks too fine-grained — a step is a meaningful unit of work, not a
 Run the plan CLI to create draft files:
 
 ```bash
-python3 $SKILL_DIR/scripts/plan.py create <slug> --prompt="<user's original request>" --agent=<your-agent-name>
+plan.py create <slug> --prompt="<user's original request>" --agent=<your-agent-name>
 ```
 
 - The slug should be a short, descriptive, kebab-case identifier derived from the user's request (e.g., `add-authentication`, `fix-login-bug`, `refactor-database`).
