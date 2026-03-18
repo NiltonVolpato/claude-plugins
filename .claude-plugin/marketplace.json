@@ -36,6 +36,16 @@
       },
       "source": "./plugins/plan-mode",
       "homepage": "https://github.com/NiltonVolpato/claude-plugins/tree/main/plugins/plan-mode"
+    },
+    {
+      "name": "alignment-mode",
+      "description": "Alignment mode: blocks write tools until you and the agent agree on the plan",
+      "author": {
+        "name": "Nilton Volpato",
+        "email": "nilton@volpa.to"
+      },
+      "source": "./plugins/alignment-mode",
+      "homepage": "https://github.com/NiltonVolpato/claude-plugins/tree/main/plugins/alignment-mode"
     }
   ]
 }

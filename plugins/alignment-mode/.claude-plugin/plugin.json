@@ -1,0 +1,10 @@
+{
+    "name": "alignment-mode",
+    "description": "Alignment mode: blocks write tools until you and the agent agree on the plan",
+    "version": "0.1.0",
+    "author": {
+        "name": "Nilton Volpato",
+        "email": "nilton@volpa.to"
+    },
+    "repository": "https://github.com/NiltonVolpato/claude-plugins"
+}

@@ -1,8 +1,6 @@
 # Claude Plugins
 
-A collection of plugins for [Claude Code](https://claude.ai/claude-code). For
-now, there's only one but more will come. Check the
-[master-programmer](./plugins/master-programmer) plugin out!
+A collection of plugins for [Claude Code](https://claude.ai/claude-code).
 
 ## Installation
 
@@ -26,6 +24,24 @@ Channels ancient wisdom for modern programming dilemmas through parables and koa
 
 ![Master Programmer Plugin Demo](./plugins/master-programmer/assets/demo.gif)
 
+### [alignment-mode](./plugins/alignment-mode)
+
+Alignment mode: blocks write tools until you and the agent agree on the plan.
+Run `/align` to enter alignment mode, describe your task, iterate on the
+approach, then type `LGTM` or `/lgtm` to unlock execution. See the
+[plugin README](./plugins/alignment-mode/README.md) for details.
+
+### [plan-mode](./plugins/plan-mode)
+
+Plan management: create, approve, track, and resume implementation plans across
+sessions. Run `/plan-mode:plan+` to create a plan, then `/plan-mode:plan+approve`
+to approve and start implementing. See the
+[plugin README](./plugins/plan-mode/README.md) for details.
+
+### [statusline](./plugins/statusline)
+
+Event logging hooks for the statusline activity display. This plugin is a
+companion to the `statusline` CLI tool (see below).
 
 ## Statusline
 
