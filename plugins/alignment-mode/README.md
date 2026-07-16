@@ -85,6 +85,27 @@ The `UserPromptSubmit` hook matches only an exact "lgtm" (case insensitive,
 optional trailing punctuation). Longer prompts like "LGTM but fix the tests
 first" do **not** trigger execution — use `/lgtm` for the explicit command.
 
+## Permissions
+
+The `/align` skill runs a shell command (`align.py`) to set the session state.
+If you're in a permission mode that requires approval for Bash commands (e.g.,
+`default` or `dontAsk`), you'll need to pre-approve it.
+
+Add this to your `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(*/align.py *)"
+    ]
+  }
+}
+```
+
+The `*/align.py *` glob pattern matches the script regardless of its install
+path, so it survives plugin updates that change the cache directory.
+
 ## Testing locally
 
 ```bash
